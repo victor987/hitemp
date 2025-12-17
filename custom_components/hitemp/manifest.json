@@ -1,0 +1,12 @@
+{
+  "domain": "hitemp",
+  "name": "HiTemp Water Heater",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/yourusername/hitemp",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "1.1.0"
+}

@@ -1,0 +1,110 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HiTemp Account",
+        "description": "Enter your HiTemp app credentials. Important: Use an account dedicated to this integration only - it cannot be shared with the mobile app.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "The HiTemp integration needs to re-authenticate your account."
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password",
+      "cannot_connect": "Cannot connect to HiTemp cloud"
+    },
+    "abort": {
+      "already_configured": "Account already configured",
+      "reauth_successful": "Re-authentication successful"
+    }
+  },
+  "entity": {
+    "climate": {
+      "water_heater": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "eco": "Eco",
+              "hybrid": "Hybrid",
+              "fast": "Fast",
+              "intelligent": "Intelligent"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "ambient_temperature": {
+        "name": "Ambient temperature"
+      },
+      "bottom_temperature": {
+        "name": "Bottom temperature"
+      },
+      "top_temperature": {
+        "name": "Top temperature"
+      },
+      "coil_temperature": {
+        "name": "Coil temperature"
+      },
+      "suction_temperature": {
+        "name": "Suction temperature"
+      },
+      "solar_temperature": {
+        "name": "Solar temperature"
+      },
+      "display_temperature": {
+        "name": "Display temperature"
+      },
+      "compressor_runtime": {
+        "name": "Compressor runtime"
+      },
+      "booster_runtime": {
+        "name": "Booster runtime"
+      },
+      "compressor_speed": {
+        "name": "Compressor speed"
+      },
+      "wifi_signal": {
+        "name": "WiFi signal"
+      }
+    },
+    "binary_sensor": {
+      "power": {
+        "name": "Power"
+      },
+      "compressor": {
+        "name": "Compressor"
+      },
+      "heater": {
+        "name": "Heater"
+      },
+      "defrost": {
+        "name": "Defrost"
+      }
+    },
+    "number": {
+      "disinfection_temperature": {
+        "name": "Disinfection temperature"
+      },
+      "disinfection_duration": {
+        "name": "Disinfection duration"
+      },
+      "disinfection_hour": {
+        "name": "Disinfection start hour"
+      },
+      "disinfection_interval": {
+        "name": "Disinfection interval"
+      }
+    },
+    "switch": {
+      "power": {
+        "name": "Power"
+      }
+    }
+  }
+}
