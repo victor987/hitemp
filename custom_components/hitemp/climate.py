@@ -58,8 +58,8 @@ async def async_setup_entry(
         # Main thermostat (average-based)
         entities.append(HiTempClimate(coordinator, device_code))
 
-        # Bottom thermostat (minimum bottom temperature)
-        entities.append(HiTempBottomClimate(coordinator, device_code))
+        # Minimum thermostat (ensures min(T02, T03) reaches target)
+        entities.append(HiTempMinimumClimate(coordinator, device_code))
 
     async_add_entities(entities)
 
@@ -242,17 +242,17 @@ class HiTempClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
         await self.coordinator.async_write_param(self._device_code, PARAM_POWER, 0)
 
 
-class HiTempBottomClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
-    """Virtual climate entity for minimum bottom temperature control.
+class HiTempMinimumClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
+    """Virtual climate entity for minimum temperature control.
 
-    This thermostat actively maintains a minimum bottom tank temperature by
-    continuously adjusting R01 as T03 (top temp) changes.
+    This thermostat actively maintains a minimum tank temperature by
+    continuously adjusting R01 as max(T02, T03) changes.
 
-    Formula: R01 = (bottom_target + T03) / 2
+    Formula: R01 = (min_target + max(T02, T03)) / 2
     """
 
     _attr_has_entity_name = True
-    _attr_name = "Bottom Thermostat"
+    _attr_name = "Minimum Thermostat"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = MIN_TEMP
     _attr_max_temp = MAX_TEMP
@@ -295,30 +295,32 @@ class HiTempBottomClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
         device = self.coordinator.get_device_info(self._device_code)
         if not device or device.get("deviceStatus") != "ONLINE":
             return False
-        # Also require T03 for calculations
+        # Require both T02 and T03 for calculations
+        t02 = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_BOTTOM)
         t03 = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_TOP)
-        return t03 is not None
+        return t02 is not None and t03 is not None
 
     @property
     def current_temperature(self) -> float | None:
-        """Return current temperature (bottom sensor only - T02)."""
-        value = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_BOTTOM)
-        if value is not None:
+        """Return current temperature (min of T02 and T03)."""
+        t02 = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_BOTTOM)
+        t03 = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_TOP)
+        if t02 is not None and t03 is not None:
             try:
-                return float(value)
+                return min(float(t02), float(t03))
             except (ValueError, TypeError):
                 pass
         return None
 
     @property
     def target_temperature(self) -> float | None:
-        """Return the stored bottom target temperature."""
-        # If bottom control is enabled, show the stored target
-        stored_target = self.coordinator.get_bottom_target(self._device_code)
+        """Return the stored minimum target temperature."""
+        # If minimum control is enabled, show the stored target
+        stored_target = self.coordinator.get_minimum_target(self._device_code)
         if stored_target is not None:
             return stored_target
-        # Otherwise, calculate what the current R01 implies for bottom temp
-        return self.coordinator.calculate_bottom_target_from_r01(self._device_code)
+        # Otherwise, calculate what the current R01 implies for minimum temp
+        return self.coordinator.calculate_minimum_target_from_r01(self._device_code)
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -371,21 +373,32 @@ class HiTempBottomClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         r01 = self.coordinator.get_device_param(self._device_code, PARAM_TARGET_TEMP)
+        t02 = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_BOTTOM)
         t03 = self.coordinator.get_device_param(self._device_code, PARAM_TEMP_TOP)
-        bottom_active = self.coordinator.is_bottom_control_enabled(self._device_code)
+        minimum_active = self.coordinator.is_minimum_control_enabled(self._device_code)
+
+        # Calculate max(T02, T03) for display
+        max_temp = None
+        if t02 is not None and t03 is not None:
+            try:
+                max_temp = max(float(t02), float(t03))
+            except (ValueError, TypeError):
+                pass
 
         attrs = {
-            "bottom_control_active": bottom_active,
-            "formula": "R01 = (bottom_target + T03) / 2",
+            "minimum_control_active": minimum_active,
+            "formula": "R01 = (min_target + max(T02, T03)) / 2",
             "current_r01": r01,
+            "current_t02": t02,
             "current_t03": t03,
+            "max_temp": max_temp,
         }
 
         # Check if R01 was clamped
-        bottom_target = self.target_temperature
-        if bottom_target is not None and t03 is not None and r01 is not None:
+        min_target = self.target_temperature
+        if min_target is not None and max_temp is not None and r01 is not None:
             try:
-                ideal_r01 = (bottom_target + float(t03)) / 2
+                ideal_r01 = (min_target + max_temp) / 2
                 if ideal_r01 < MIN_TEMP or ideal_r01 > MAX_TEMP:
                     attrs["r01_clamped"] = True
                     attrs["ideal_r01"] = round(ideal_r01, 1)
@@ -395,26 +408,26 @@ class HiTempBottomClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
         return attrs
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set new bottom target temperature."""
-        if (bottom_target := kwargs.get(ATTR_TEMPERATURE)) is None:
+        """Set new minimum target temperature."""
+        if (min_target := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
 
-        bottom_target = float(bottom_target)
+        min_target = float(min_target)
 
-        # Calculate the R01 needed to achieve this bottom target
-        calculated_r01 = self.coordinator.calculate_r01_from_bottom_target(
-            self._device_code, bottom_target
+        # Calculate the R01 needed to achieve this minimum target
+        calculated_r01 = self.coordinator.calculate_r01_from_minimum_target(
+            self._device_code, min_target
         )
 
         if calculated_r01 is None:
             _LOGGER.warning(
-                "Cannot set bottom target: T03 unavailable for device %s",
+                "Cannot set minimum target: T02/T03 unavailable for device %s",
                 self._device_code
             )
             return
 
         # Enable active control and store target
-        self.coordinator.enable_bottom_control(self._device_code, bottom_target)
+        self.coordinator.enable_minimum_control(self._device_code, min_target)
 
         # Write the calculated R01 to device
         await self.coordinator.async_write_param(
@@ -433,6 +446,6 @@ class HiTempBottomClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
         await self.coordinator.async_write_param(self._device_code, PARAM_POWER, 1)
 
     async def async_turn_off(self) -> None:
-        """Turn off the water heater and disable active bottom control."""
-        self.coordinator.disable_bottom_control(self._device_code)
+        """Turn off the water heater and disable active minimum control."""
+        self.coordinator.disable_minimum_control(self._device_code)
         await self.coordinator.async_write_param(self._device_code, PARAM_POWER, 0)
