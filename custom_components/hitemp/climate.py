@@ -314,55 +314,38 @@ class HiTempMinimumClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        """Return the stored minimum target temperature."""
+        """Return the target temperature."""
         # If minimum control is enabled, show the stored target
         stored_target = self.coordinator.get_minimum_target(self._device_code)
         if stored_target is not None:
             return stored_target
-        # Otherwise, calculate what the current R01 implies for minimum temp
-        return self.coordinator.calculate_minimum_target_from_r01(self._device_code)
+        # When disabled, show R01 (same as average thermostat)
+        r01 = self.coordinator.get_device_param(self._device_code, PARAM_TARGET_TEMP)
+        if r01 is not None:
+            try:
+                return float(r01)
+            except (ValueError, TypeError):
+                pass
+        return None
 
     @property
     def hvac_mode(self) -> HVACMode:
-        """Return current HVAC mode (mirrors main thermostat)."""
-        power = self.coordinator.get_device_param(self._device_code, PARAM_POWER)
-        if power is not None:
-            try:
-                if int(power) == 0:
-                    return HVACMode.OFF
-            except (ValueError, TypeError):
-                pass
-        return HVACMode.HEAT
+        """Return current HVAC mode (based on minimum control state)."""
+        if self.coordinator.is_minimum_control_enabled(self._device_code):
+            return HVACMode.HEAT
+        return HVACMode.OFF
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        """Return current HVAC action (mirrors main thermostat)."""
+        """Return current HVAC action."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
 
-        # Check defrost
-        defrost = self.coordinator.get_device_param(self._device_code, PARAM_DEFROST_STATUS)
-        if defrost:
-            try:
-                if int(defrost) == 1:
-                    return HVACAction.DEFROSTING
-            except (ValueError, TypeError):
-                pass
-
-        # Check compressor
+        # Check if device is actually heating
         compressor = self.coordinator.get_device_param(self._device_code, PARAM_COMPRESSOR_STATUS)
         if compressor:
             try:
                 if int(compressor) == 1:
-                    return HVACAction.HEATING
-            except (ValueError, TypeError):
-                pass
-
-        # Check heater
-        heater = self.coordinator.get_device_param(self._device_code, PARAM_HEATER_STATUS)
-        if heater:
-            try:
-                if int(heater) == 1:
                     return HVACAction.HEATING
             except (ValueError, TypeError):
                 pass
@@ -442,10 +425,14 @@ class HiTempMinimumClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
             await self.async_turn_on()
 
     async def async_turn_on(self) -> None:
-        """Turn on the water heater."""
-        await self.coordinator.async_write_param(self._device_code, PARAM_POWER, 1)
+        """Enable minimum control with current R01 as initial target."""
+        r01 = self.coordinator.get_device_param(self._device_code, PARAM_TARGET_TEMP)
+        if r01 is not None:
+            try:
+                self.coordinator.enable_minimum_control(self._device_code, float(r01))
+            except (ValueError, TypeError):
+                pass
 
     async def async_turn_off(self) -> None:
-        """Turn off the water heater and disable active minimum control."""
+        """Disable minimum control (does not affect device power)."""
         self.coordinator.disable_minimum_control(self._device_code)
-        await self.coordinator.async_write_param(self._device_code, PARAM_POWER, 0)

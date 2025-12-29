@@ -275,13 +275,16 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
         # Check if R01 was changed externally (physical display or main thermostat)
         if last_r01 is not None and abs(current_r01_float - last_r01) > 0.1:
-            # R01 changed externally, recalculate stored minimum target
-            new_min_target = 2 * current_r01_float - current_max_temp
-            self._minimum_target[device_code] = new_min_target
+            # R01 changed externally - disable minimum control (user took manual control)
             _LOGGER.debug(
-                "R01 changed externally for %s: R01=%.1f, new min_target=%.1f",
-                device_code, current_r01_float, new_min_target
+                "R01 changed externally for %s: %.1f→%.1f, disabling minimum control",
+                device_code, last_r01, current_r01_float
             )
+            self.disable_minimum_control(device_code)
+            # Update tracking values before returning
+            self._last_max_temp[device_code] = current_max_temp
+            self._last_r01[device_code] = current_r01_float
+            return
 
         # Check if max temp changed - need to adjust R01
         if last_max_temp is not None and abs(current_max_temp - last_max_temp) > 0.1:
