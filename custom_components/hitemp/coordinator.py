@@ -17,6 +17,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import HiTempApiClient, HiTempAuthError, HiTempConnectionError
 from .const import ALL_PARAMS, DOMAIN, MAX_TEMP, MIN_TEMP, UPDATE_INTERVAL
 
+# External sensor entity ID for COP calculation
+ENERGY_SENSOR_ENTITY_ID = "sensor.water_heater_energy"
+# Tank parameters for energy calculation
+TANK_VOLUME_LITERS = 300
+SPECIFIC_HEAT_KWH = 0.001163  # kWh/(kg·K)
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -43,6 +49,12 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._minimum_target: dict[str, float] = {}
         self._last_max_temp: dict[str, float | None] = {}
         self._last_r01: dict[str, float | None] = {}
+
+        # COP tracking state
+        self._cop_last_energy_stored: dict[str, float | None] = {}
+        self._cop_last_energy_meter: dict[str, float | None] = {}
+        self._cop_current: dict[str, float | None] = {}
+        self._cop_valid: dict[str, bool] = {}
 
     async def _async_setup(self) -> None:
         """Set up the coordinator."""
@@ -95,6 +107,7 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             # Run active minimum control loop for each device
             for device_code in data:
                 await self._update_minimum_control(device_code)
+                self._update_cop(device_code)
 
             return data
 
@@ -290,3 +303,105 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         # Update tracking values
         self._last_max_temp[device_code] = current_max_temp
         self._last_r01[device_code] = current_r01_float
+
+    # =========================================================================
+    # COP Calculation
+    # =========================================================================
+
+    def _get_energy_stored(self, device_code: str) -> float | None:
+        """Calculate energy stored in tank: 300kg × 0.001163 × T02 kWh."""
+        t02 = self.get_device_param(device_code, "T02")
+        if t02 is None:
+            return None
+        try:
+            return TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * float(t02)
+        except (ValueError, TypeError):
+            return None
+
+    def _get_energy_meter(self) -> float | None:
+        """Get current energy meter reading from external sensor."""
+        state = self.hass.states.get(ENERGY_SENSOR_ENTITY_ID)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
+
+    def is_compressor_running(self, device_code: str) -> bool:
+        """Check if compressor is running based on O29 (compressor speed Hz)."""
+        o29 = self.get_device_param(device_code, "O29")
+        if o29 is None:
+            return False
+        try:
+            return float(o29) > 0
+        except (ValueError, TypeError):
+            return False
+
+    def _update_cop(self, device_code: str) -> None:
+        """Update COP calculation for a device."""
+        # Get current values
+        current_energy_stored = self._get_energy_stored(device_code)
+        current_energy_meter = self._get_energy_meter()
+
+        # Check if compressor is running based on O29
+        is_heating = self.is_compressor_running(device_code)
+
+        if current_energy_stored is None or current_energy_meter is None:
+            self._cop_valid[device_code] = False
+            return
+
+        # Get last values
+        last_energy_stored = self._cop_last_energy_stored.get(device_code)
+        last_energy_meter = self._cop_last_energy_meter.get(device_code)
+
+        # Update stored values for next iteration
+        self._cop_last_energy_stored[device_code] = current_energy_stored
+        self._cop_last_energy_meter[device_code] = current_energy_meter
+
+        # Need previous values to calculate deltas
+        if last_energy_stored is None or last_energy_meter is None:
+            self._cop_valid[device_code] = False
+            return
+
+        # Calculate deltas
+        delta_energy_stored = current_energy_stored - last_energy_stored
+        delta_energy_meter = current_energy_meter - last_energy_meter
+
+        # Only calculate COP when:
+        # 1. Heater is ON
+        # 2. Energy stored is not dropping (no water draw) - allow small decreases due to standby losses
+        # 3. Energy consumed is positive (meter increased)
+        if not is_heating:
+            self._cop_valid[device_code] = False
+            return
+
+        if delta_energy_stored < -0.1:  # Allow 0.1 kWh tolerance for standby losses
+            # Water is being drawn, COP invalid
+            self._cop_valid[device_code] = False
+            return
+
+        if delta_energy_meter <= 0.01:  # Need at least 0.01 kWh consumed
+            # No significant energy consumed
+            self._cop_valid[device_code] = False
+            return
+
+        # Calculate COP
+        cop = delta_energy_stored / delta_energy_meter
+
+        # Sanity check: COP should be between 0 and 10 for heat pumps
+        if 0 < cop <= 10:
+            self._cop_current[device_code] = round(cop, 2)
+            self._cop_valid[device_code] = True
+        else:
+            self._cop_valid[device_code] = False
+
+    def get_cop(self, device_code: str) -> float | None:
+        """Get the current COP value for a device."""
+        if self._cop_valid.get(device_code, False):
+            return self._cop_current.get(device_code)
+        return None
+
+    def is_cop_valid(self, device_code: str) -> bool:
+        """Check if COP measurement is currently valid."""
+        return self._cop_valid.get(device_code, False)
