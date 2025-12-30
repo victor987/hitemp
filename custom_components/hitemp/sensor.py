@@ -406,12 +406,14 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if not self.coordinator.last_update_success:
-            return False
-        device = self.coordinator.get_device_info(self._device_code)
-        if device:
-            return device.get("deviceStatus") == "ONLINE"
-        return False
+        # Always visible - availability conditions preserved for later
+        # if not self.coordinator.last_update_success:
+        #     return False
+        # device = self.coordinator.get_device_info(self._device_code)
+        # if device:
+        #     return device.get("deviceStatus") == "ONLINE"
+        # return False
+        return True
 
     @property
     def native_value(self) -> StateType:
