@@ -358,53 +358,27 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         last_energy_stored = self._cop_last_energy_stored.get(device_code)
         last_energy_meter = self._cop_last_energy_meter.get(device_code)
 
-        # Update stored values for next iteration
-        self._cop_last_energy_stored[device_code] = current_energy_stored
-        self._cop_last_energy_meter[device_code] = current_energy_meter
-
         # Need previous values to calculate deltas
         if last_energy_stored is None or last_energy_meter is None:
-            self._cop_valid[device_code] = False
+            # First run - store initial values
+            self._cop_last_energy_stored[device_code] = current_energy_stored
+            self._cop_last_energy_meter[device_code] = current_energy_meter
             return
 
         # Calculate deltas
         delta_energy_stored = current_energy_stored - last_energy_stored
         delta_energy_meter = current_energy_meter - last_energy_meter
 
-        # Validation disabled - always show COP
-        # TODO: Re-enable when ready
-        # # Only calculate COP when:
-        # # 1. Heater is ON
-        # # 2. Energy stored is not dropping (no water draw) - allow small decreases due to standby losses
-        # # 3. Energy consumed is positive (meter increased)
-        # if not is_heating:
-        #     self._cop_valid[device_code] = False
-        #     return
-        #
-        # if delta_energy_stored < -0.1:  # Allow 0.1 kWh tolerance for standby losses
-        #     # Water is being drawn, COP invalid
-        #     self._cop_valid[device_code] = False
-        #     return
-        #
-        # if delta_energy_meter <= 0.01:  # Need at least 0.01 kWh consumed
-        #     # No significant energy consumed
-        #     self._cop_valid[device_code] = False
-        #     return
-
-        # Calculate COP (guard against division by zero)
-        if delta_energy_meter == 0:
-            return
-        cop = delta_energy_stored / delta_energy_meter
-
-        # Always show COP (sanity check disabled)
-        self._cop_current[device_code] = round(cop, 2)
-        self._cop_valid[device_code] = True
-        # TODO: Re-enable sanity check when ready
-        # if 0 < cop <= 10:
-        #     self._cop_current[device_code] = round(cop, 2)
-        #     self._cop_valid[device_code] = True
-        # else:
-        #     self._cop_valid[device_code] = False
+        # Only calculate COP when energy meter changed
+        # This ensures both deltas cover the same time period
+        if delta_energy_meter != 0:
+            cop = delta_energy_stored / delta_energy_meter
+            self._cop_current[device_code] = round(cop, 2)
+            self._cop_valid[device_code] = True
+            # Update stored values ONLY when we calculate
+            self._cop_last_energy_stored[device_code] = current_energy_stored
+            self._cop_last_energy_meter[device_code] = current_energy_meter
+        # Otherwise keep previous COP value visible
 
     def get_cop(self, device_code: str) -> float | None:
         """Get the current COP value for a device."""
