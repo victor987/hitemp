@@ -417,17 +417,13 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
 
     @property
     def native_value(self) -> StateType:
-        """Return COP value (only valid when heating and no water draw)."""
+        """Return COP value."""
         return self.coordinator.get_cop(self._device_code)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        is_compressor_running = self.coordinator.is_compressor_running(self._device_code)
-        o29 = self.coordinator.get_device_param(self._device_code, "O29")
         return {
-            "compressor_running": is_compressor_running,
-            "O29_compressor_speed_hz": o29,
             "energy_sensor": "sensor.water_heater_energy",
             "note": "COP updates when energy meter changes (~20 min)",
         }
