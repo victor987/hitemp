@@ -50,11 +50,10 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._last_max_temp: dict[str, float | None] = {}
         self._last_r01: dict[str, float | None] = {}
 
-        # COP tracking state
-        self._cop_last_energy_stored: dict[str, float | None] = {}
+        # COP tracking state (only updates when energy meter changes)
         self._cop_last_energy_meter: dict[str, float | None] = {}
+        self._cop_last_t02: dict[str, float | None] = {}
         self._cop_current: dict[str, float | None] = {}
-        self._cop_valid: dict[str, bool] = {}
 
     async def _async_setup(self) -> None:
         """Set up the coordinator."""
@@ -308,18 +307,8 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._last_r01[device_code] = current_r01_float
 
     # =========================================================================
-    # COP Calculation
+    # COP Calculation (only updates when energy meter changes)
     # =========================================================================
-
-    def _get_energy_stored(self, device_code: str) -> float | None:
-        """Calculate energy stored in tank: 300kg × 0.001163 × T02 kWh."""
-        t02 = self.get_device_param(device_code, "T02")
-        if t02 is None:
-            return None
-        try:
-            return TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * float(t02)
-        except (ValueError, TypeError):
-            return None
 
     def _get_energy_meter(self) -> float | None:
         """Get current energy meter reading from external sensor."""
@@ -342,50 +331,41 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             return False
 
     def _update_cop(self, device_code: str) -> None:
-        """Update COP calculation for a device."""
-        # Get current values
-        current_energy_stored = self._get_energy_stored(device_code)
-        current_energy_meter = self._get_energy_meter()
+        """Update COP only when energy meter changes."""
+        t02 = self.get_device_param(device_code, "T02")
+        energy_meter = self._get_energy_meter()
 
-        # Check if compressor is running based on O29
-        is_heating = self.is_compressor_running(device_code)
-
-        if current_energy_stored is None or current_energy_meter is None:
-            self._cop_valid[device_code] = False
+        if t02 is None or energy_meter is None:
             return
 
-        # Get last values
-        last_energy_stored = self._cop_last_energy_stored.get(device_code)
-        last_energy_meter = self._cop_last_energy_meter.get(device_code)
-
-        # Need previous values to calculate deltas
-        if last_energy_stored is None or last_energy_meter is None:
-            # First run - store initial values
-            self._cop_last_energy_stored[device_code] = current_energy_stored
-            self._cop_last_energy_meter[device_code] = current_energy_meter
+        try:
+            t02 = float(t02)
+        except (ValueError, TypeError):
             return
 
-        # Calculate deltas
-        delta_energy_stored = current_energy_stored - last_energy_stored
-        delta_energy_meter = current_energy_meter - last_energy_meter
+        last_meter = self._cop_last_energy_meter.get(device_code)
 
-        # Only calculate COP when energy meter changed
-        # This ensures both deltas cover the same time period
-        if delta_energy_meter != 0:
-            cop = delta_energy_stored / delta_energy_meter
-            self._cop_current[device_code] = round(cop, 2)
-            self._cop_valid[device_code] = True
-            # Update stored values ONLY when we calculate
-            self._cop_last_energy_stored[device_code] = current_energy_stored
-            self._cop_last_energy_meter[device_code] = current_energy_meter
-        # Otherwise keep previous COP value visible
+        # Only calculate when meter changed
+        if last_meter is not None and energy_meter != last_meter:
+            last_t02 = self._cop_last_t02.get(device_code)
+
+            if last_t02 is not None:
+                # Energy stored = 300 × 0.001163 × T02 = 0.3489 × T02
+                delta_energy_stored = TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * (t02 - last_t02)
+                delta_energy_meter = energy_meter - last_meter
+
+                if delta_energy_meter > 0:
+                    self._cop_current[device_code] = round(delta_energy_stored / delta_energy_meter, 2)
+
+            # Snapshot T02 at this meter reading
+            self._cop_last_t02[device_code] = t02
+
+        # First run or meter changed - update last meter
+        if last_meter is None or energy_meter != last_meter:
+            self._cop_last_energy_meter[device_code] = energy_meter
+            if last_meter is None:
+                self._cop_last_t02[device_code] = t02
 
     def get_cop(self, device_code: str) -> float | None:
-        """Get the current COP value for a device."""
-        if self._cop_valid.get(device_code, False):
-            return self._cop_current.get(device_code)
-        return None
-
-    def is_cop_valid(self, device_code: str) -> bool:
-        """Check if COP measurement is currently valid."""
-        return self._cop_valid.get(device_code, False)
+        """Get current COP (always returns last calculated value)."""
+        return self._cop_current.get(device_code)
