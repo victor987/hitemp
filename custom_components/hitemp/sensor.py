@@ -422,14 +422,25 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
+        """Return extra state attributes with debug info."""
         is_valid = self.coordinator.is_cop_valid(self._device_code)
         is_compressor_running = self.coordinator.is_compressor_running(self._device_code)
         o29 = self.coordinator.get_device_param(self._device_code, "O29")
+
+        # Debug: get internal COP state
+        current_energy_stored = self.coordinator._get_energy_stored(self._device_code)
+        current_energy_meter = self.coordinator._get_energy_meter()
+        last_energy_stored = self.coordinator._cop_last_energy_stored.get(self._device_code)
+        last_energy_meter = self.coordinator._cop_last_energy_meter.get(self._device_code)
+
         return {
             "valid": is_valid,
             "compressor_running": is_compressor_running,
             "O29_compressor_speed_hz": o29,
             "energy_sensor": "sensor.water_heater_energy",
-            "note": "COP calculated when compressor running (O29>0) and no water draw detected",
+            # Debug values
+            "debug_current_energy_stored": current_energy_stored,
+            "debug_current_energy_meter": current_energy_meter,
+            "debug_last_energy_stored": last_energy_stored,
+            "debug_last_energy_meter": last_energy_meter,
         }
