@@ -343,15 +343,19 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     def _update_cop(self, device_code: str) -> None:
         """Update COP - only when energy meter changes."""
         current_energy_meter = self._get_energy_meter()
-        if current_energy_meter is None:
+        current_energy_stored = self._get_energy_stored(device_code)
+
+        # Need both values
+        if current_energy_meter is None or current_energy_stored is None:
             return
 
         last_energy_meter = self._cop_last_energy_meter.get(device_code)
+        energy_stored_at_start = self._cop_energy_stored_at_meter_change.get(device_code)
 
-        # First run - just store values
-        if last_energy_meter is None:
+        # Initialize if not set
+        if last_energy_meter is None or energy_stored_at_start is None:
             self._cop_last_energy_meter[device_code] = current_energy_meter
-            self._cop_energy_stored_at_meter_change[device_code] = self._get_energy_stored(device_code)
+            self._cop_energy_stored_at_meter_change[device_code] = current_energy_stored
             return
 
         # No change in meter - do nothing
@@ -359,15 +363,11 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             return
 
         # Meter changed - calculate COP
-        current_energy_stored = self._get_energy_stored(device_code)
-        energy_stored_at_start = self._cop_energy_stored_at_meter_change.get(device_code)
+        delta_stored = current_energy_stored - energy_stored_at_start
+        delta_meter = current_energy_meter - last_energy_meter
 
-        if current_energy_stored is not None and energy_stored_at_start is not None:
-            delta_stored = current_energy_stored - energy_stored_at_start
-            delta_meter = current_energy_meter - last_energy_meter
-
-            if delta_meter > 0:
-                self._cop_current[device_code] = round(delta_stored / delta_meter, 2)
+        if delta_meter > 0:
+            self._cop_current[device_code] = round(delta_stored / delta_meter, 2)
 
         # Update tracking for next meter change
         self._cop_last_energy_meter[device_code] = current_energy_meter
