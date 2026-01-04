@@ -341,26 +341,43 @@ class HiTempEnergyStoredSensor(CoordinatorEntity[HiTempCoordinator], SensorEntit
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if not self.coordinator.last_update_success:
+        try:
+            _LOGGER.debug("Energy stored: checking availability")
+            if not self.coordinator.last_update_success:
+                _LOGGER.warning("Energy stored: coordinator update failed")
+                return False
+            device = self.coordinator.get_device_info(self._device_code)
+            _LOGGER.debug("Energy stored: device=%s", device)
+            if device:
+                status = device.get("deviceStatus")
+                _LOGGER.debug("Energy stored: device status=%s", status)
+                return status == "ONLINE"
+            _LOGGER.warning("Energy stored: no device info")
             return False
-        device = self.coordinator.get_device_info(self._device_code)
-        if device:
-            return device.get("deviceStatus") == "ONLINE"
-        return False
+        except Exception as e:
+            _LOGGER.error("Energy stored: available() error: %s", e, exc_info=True)
+            return False
 
     @property
     def native_value(self) -> StateType:
         """Return energy stored: 300kg × 0.001163 kWh/(kg·K) × T02."""
-        t02 = self.coordinator.get_device_param(self._device_code, "T02")
-        if t02 is not None:
-            try:
-                temp = float(t02)
-                # Energy = mass × specific_heat × temperature
-                energy = self.TANK_VOLUME_LITERS * self.SPECIFIC_HEAT_KWH * temp
-                return round(energy, 2)
-            except (ValueError, TypeError):
-                pass
-        return None
+        try:
+            t02 = self.coordinator.get_device_param(self._device_code, "T02")
+            _LOGGER.debug("Energy stored: T02=%s", t02)
+            if t02 is not None:
+                try:
+                    temp = float(t02)
+                    # Energy = mass × specific_heat × temperature
+                    energy = self.TANK_VOLUME_LITERS * self.SPECIFIC_HEAT_KWH * temp
+                    result = round(energy, 2)
+                    _LOGGER.debug("Energy stored: calculated=%s", result)
+                    return result
+                except (ValueError, TypeError) as e:
+                    _LOGGER.error("Energy stored: calculation error: %s", e)
+            return None
+        except Exception as e:
+            _LOGGER.error("Energy stored: native_value() error: %s", e, exc_info=True)
+            return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
