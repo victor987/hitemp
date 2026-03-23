@@ -11,7 +11,7 @@ from homeassistant.components.number import (
     NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -88,6 +88,13 @@ async def async_setup_entry(
                     )
                 )
 
+        entities.append(
+            HiTempPreciseTempThreshold(coordinator, device_code)
+        )
+        entities.append(
+            HiTempEnergyStoredThreshold(coordinator, device_code)
+        )
+
     async_add_entities(entities)
 
 
@@ -163,3 +170,92 @@ class HiTempNumber(CoordinatorEntity[HiTempCoordinator], NumberEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes including the parameter code."""
         return {"code": self._param_code}
+
+
+class HiTempPreciseTempThreshold(CoordinatorEntity[HiTempCoordinator], NumberEntity):
+    """Threshold for precise temperature sensor."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Precise temperature threshold"
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_min_value = 1
+    _attr_native_max_value = 10
+    _attr_native_step = 1
+
+    def __init__(
+        self,
+        coordinator: HiTempCoordinator,
+        device_code: str,
+    ) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_precise_temp_threshold"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Return the current threshold."""
+        return int(self.coordinator.get_precise_temp_threshold(self._device_code))
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new threshold."""
+        self.coordinator.set_precise_temp_threshold(self._device_code, int(value))
+        self.async_write_ha_state()
+
+
+class HiTempEnergyStoredThreshold(CoordinatorEntity[HiTempCoordinator], NumberEntity):
+    """Threshold for energy stored precise sensor."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Energy stored threshold"
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_min_value = 1
+    _attr_native_max_value = 10
+    _attr_native_step = 1
+
+    def __init__(
+        self,
+        coordinator: HiTempCoordinator,
+        device_code: str,
+    ) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_energy_stored_threshold"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Return the current threshold."""
+        return int(self.coordinator.get_energy_stored_threshold(self._device_code))
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new threshold."""
+        self.coordinator.set_energy_stored_threshold(self._device_code, int(value))
+        self.async_write_ha_state()

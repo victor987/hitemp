@@ -105,9 +105,19 @@ async def async_setup_entry(
             HiTempWifiSensor(coordinator, device_code)
         )
 
-        # Add computed sensors
+        # Add temperature delta sensors
+        for key, name, param_a, param_b in TEMP_DELTAS:
+            entities.append(
+                HiTempTempDeltaSensor(coordinator, device_code, key, name, param_a, param_b)
+            )
         entities.append(
-            HiTempTempDifferenceSensor(coordinator, device_code)
+            HiTempPreciseTempSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempEnergyStoredMaxSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempEnergyStoredMinSensor(coordinator, device_code)
         )
         entities.append(
             HiTempEnergyStoredSensor(coordinator, device_code)
@@ -240,11 +250,18 @@ class HiTempWifiSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
         return None
 
 
-class HiTempTempDifferenceSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
-    """Temperature difference sensor (T02 - T01)."""
+TEMP_DELTAS = [
+    ("temp_difference", "Temperature difference", "T02", "T01"),
+    ("superheat", "Superheat", "T05", "T04"),
+    ("condenser_approach", "Condenser approach", "T07", "T02"),
+    ("lift", "Lift", "T02", "T04"),
+]
+
+
+class HiTempTempDeltaSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Temperature delta sensor (param_a - param_b)."""
 
     _attr_has_entity_name = True
-    _attr_name = "Temperature difference"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -253,11 +270,18 @@ class HiTempTempDifferenceSensor(CoordinatorEntity[HiTempCoordinator], SensorEnt
         self,
         coordinator: HiTempCoordinator,
         device_code: str,
+        key: str,
+        name: str,
+        param_a: str,
+        param_b: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._device_code = device_code
-        self._attr_unique_id = f"{device_code}_temp_difference"
+        self._param_a = param_a
+        self._param_b = param_b
+        self._attr_name = name
+        self._attr_unique_id = f"{device_code}_{key}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -282,12 +306,12 @@ class HiTempTempDifferenceSensor(CoordinatorEntity[HiTempCoordinator], SensorEnt
 
     @property
     def native_value(self) -> StateType:
-        """Return T02 - T01 (bottom water temp minus ambient)."""
-        t01 = self.coordinator.get_device_param(self._device_code, "T01")
-        t02 = self.coordinator.get_device_param(self._device_code, "T02")
-        if t01 is not None and t02 is not None:
+        """Return param_a - param_b."""
+        val_a = self.coordinator.get_device_param(self._device_code, self._param_a)
+        val_b = self.coordinator.get_device_param(self._device_code, self._param_b)
+        if val_a is not None and val_b is not None:
             try:
-                return round(float(t02) - float(t01), 1)
+                return round(float(val_a) - float(val_b), 1)
             except (ValueError, TypeError):
                 pass
         return None
@@ -295,28 +319,23 @@ class HiTempTempDifferenceSensor(CoordinatorEntity[HiTempCoordinator], SensorEnt
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        t01 = self.coordinator.get_device_param(self._device_code, "T01")
-        t02 = self.coordinator.get_device_param(self._device_code, "T02")
+        val_a = self.coordinator.get_device_param(self._device_code, self._param_a)
+        val_b = self.coordinator.get_device_param(self._device_code, self._param_b)
         return {
-            "formula": "T02 - T01",
-            "T01_ambient": t01,
-            "T02_bottom": t02,
+            "formula": f"{self._param_a} - {self._param_b}",
+            self._param_a: val_a,
+            self._param_b: val_b,
         }
 
 
-class HiTempEnergyStoredSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
-    """Energy stored in the tank relative to 0°C."""
+class HiTempPreciseTempSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Average of T02 and T03 when within threshold."""
 
     _attr_has_entity_name = True
-    _attr_name = "Energy stored"
-    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+    _attr_name = "Precise temperature"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-
-    # Tank capacity in liters (= kg of water)
-    TANK_VOLUME_LITERS = 300
-    # Specific heat of water: 4.186 kJ/(kg·K) = 0.001163 kWh/(kg·K)
-    SPECIFIC_HEAT_KWH = 0.001163
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
     def __init__(
         self,
@@ -326,7 +345,7 @@ class HiTempEnergyStoredSensor(CoordinatorEntity[HiTempCoordinator], SensorEntit
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._device_code = device_code
-        self._attr_unique_id = f"{device_code}_energy_stored"
+        self._attr_unique_id = f"{device_code}_precise_temp"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -342,52 +361,159 @@ class HiTempEnergyStoredSensor(CoordinatorEntity[HiTempCoordinator], SensorEntit
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        try:
-            _LOGGER.debug("Energy stored: checking availability")
-            if not self.coordinator.last_update_success:
-                _LOGGER.warning("Energy stored: coordinator update failed")
-                return False
-            device = self.coordinator.get_device_info(self._device_code)
-            _LOGGER.debug("Energy stored: device=%s", device)
-            if device:
-                status = device.get("deviceStatus")
-                _LOGGER.debug("Energy stored: device status=%s", status)
-                return status == "ONLINE"
-            _LOGGER.warning("Energy stored: no device info")
+        if not self.coordinator.last_update_success:
             return False
-        except Exception as e:
-            _LOGGER.error("Energy stored: available() error: %s", e, exc_info=True)
-            return False
+        device = self.coordinator.get_device_info(self._device_code)
+        if device:
+            return device.get("deviceStatus") == "ONLINE"
+        return False
 
     @property
     def native_value(self) -> StateType:
-        """Return energy stored: 300kg × 0.001163 kWh/(kg·K) × T02."""
-        try:
-            t02 = self.coordinator.get_device_param(self._device_code, "T02")
-            _LOGGER.debug("Energy stored: T02=%s", t02)
-            if t02 is not None:
-                try:
-                    temp = float(t02)
-                    # Energy = mass × specific_heat × temperature
-                    energy = self.TANK_VOLUME_LITERS * self.SPECIFIC_HEAT_KWH * temp
-                    result = round(energy, 2)
-                    _LOGGER.debug("Energy stored: calculated=%s", result)
-                    return result
-                except (ValueError, TypeError) as e:
-                    _LOGGER.error("Energy stored: calculation error: %s", e)
-            return None
-        except Exception as e:
-            _LOGGER.error("Energy stored: native_value() error: %s", e, exc_info=True)
-            return None
+        """Return avg(T02, T03) if within threshold, else None."""
+        return self.coordinator.get_precise_temperature(self._device_code)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         t02 = self.coordinator.get_device_param(self._device_code, "T02")
+        t03 = self.coordinator.get_device_param(self._device_code, "T03")
+        threshold = self.coordinator.get_precise_temp_threshold(self._device_code)
         return {
-            "formula": "300L × 0.001163 kWh/(kg·K) × T02",
-            "tank_volume_liters": self.TANK_VOLUME_LITERS,
+            "formula": "avg(T02, T03) when |T02-T03| <= threshold",
             "T02_bottom": t02,
+            "T03_top": t03,
+            "threshold": threshold,
+        }
+
+
+class HiTempEnergyStoredMaxSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Energy stored based on T03 (top)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Energy stored (max)"
+    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_energy_stored_max"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
+        device = self.coordinator.get_device_info(self._device_code)
+        return device.get("deviceStatus") == "ONLINE" if device else False
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_energy_stored_max(self._device_code)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        t03 = self.coordinator.get_device_param(self._device_code, "T03")
+        return {"source": "T03", "T03_top": t03}
+
+
+class HiTempEnergyStoredMinSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Energy stored based on T02 (bottom)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Energy stored (min)"
+    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_energy_stored_min"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
+        device = self.coordinator.get_device_info(self._device_code)
+        return device.get("deviceStatus") == "ONLINE" if device else False
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_energy_stored_min(self._device_code)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        t02 = self.coordinator.get_device_param(self._device_code, "T02")
+        return {"source": "T02", "T02_bottom": t02}
+
+
+class HiTempEnergyStoredSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Energy stored based on avg(T02, T03) when within threshold."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Energy stored"
+    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_energy_stored"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
+        device = self.coordinator.get_device_info(self._device_code)
+        return device.get("deviceStatus") == "ONLINE" if device else False
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_energy_stored_precise(self._device_code)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        t02 = self.coordinator.get_device_param(self._device_code, "T02")
+        t03 = self.coordinator.get_device_param(self._device_code, "T03")
+        threshold = self.coordinator.get_energy_stored_threshold(self._device_code)
+        return {
+            "formula": "avg(energy_max, energy_min) when diff <= threshold",
+            "T02_bottom": t02,
+            "T03_top": t03,
+            "threshold_kwh": threshold,
         }
 
 

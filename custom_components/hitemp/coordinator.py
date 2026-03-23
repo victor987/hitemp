@@ -50,6 +50,11 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._last_max_temp: dict[str, float | None] = {}
         self._last_r01: dict[str, float | None] = {}
 
+        # Precise temperature threshold (local setting, not a device param)
+        self._precise_temp_threshold: dict[str, float] = {}
+        # Energy stored threshold in kWh (default 1.0)
+        self._energy_stored_threshold: dict[str, float] = {}
+
         # COP tracking - only updates when energy meter changes
         self._cop_last_energy_meter: dict[str, float | None] = {}
         self._cop_energy_stored_at_meter_change: dict[str, float | None] = {}
@@ -381,3 +386,74 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     def get_cop(self, device_code: str) -> float | None:
         """Get COP value."""
         return self._cop_current.get(device_code)
+
+    # =========================================================================
+    # Precise Temperature
+    # =========================================================================
+
+    def get_precise_temp_threshold(self, device_code: str) -> float:
+        """Get the precise temperature threshold."""
+        return self._precise_temp_threshold.get(device_code, 2.0)
+
+    def set_precise_temp_threshold(self, device_code: str, value: float) -> None:
+        """Set the precise temperature threshold."""
+        self._precise_temp_threshold[device_code] = value
+
+    def get_precise_temperature(self, device_code: str) -> float | None:
+        """Return avg(T02, T03) if within threshold, else None."""
+        t02 = self.get_device_param(device_code, "T02")
+        t03 = self.get_device_param(device_code, "T03")
+        if t02 is None or t03 is None:
+            return None
+        try:
+            bottom = float(t02)
+            top = float(t03)
+        except (ValueError, TypeError):
+            return None
+        threshold = self.get_precise_temp_threshold(device_code)
+        if abs(top - bottom) > threshold:
+            return None
+        return round((bottom + top) / 2, 1)
+
+    # =========================================================================
+    # Energy Stored
+    # =========================================================================
+
+    def get_energy_stored_threshold(self, device_code: str) -> float:
+        """Get the energy stored threshold in kWh."""
+        return self._energy_stored_threshold.get(device_code, 1.0)
+
+    def set_energy_stored_threshold(self, device_code: str, value: float) -> None:
+        """Set the energy stored threshold in kWh."""
+        self._energy_stored_threshold[device_code] = value
+
+    def get_energy_stored_max(self, device_code: str) -> float | None:
+        """Energy stored based on T03 (top)."""
+        t03 = self.get_device_param(device_code, "T03")
+        if t03 is None:
+            return None
+        try:
+            return round(TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * float(t03), 2)
+        except (ValueError, TypeError):
+            return None
+
+    def get_energy_stored_min(self, device_code: str) -> float | None:
+        """Energy stored based on T02 (bottom)."""
+        t02 = self.get_device_param(device_code, "T02")
+        if t02 is None:
+            return None
+        try:
+            return round(TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * float(t02), 2)
+        except (ValueError, TypeError):
+            return None
+
+    def get_energy_stored_precise(self, device_code: str) -> float | None:
+        """Energy stored based on avg(T02, T03) when max-min within threshold."""
+        e_max = self.get_energy_stored_max(device_code)
+        e_min = self.get_energy_stored_min(device_code)
+        if e_max is None or e_min is None:
+            return None
+        threshold = self.get_energy_stored_threshold(device_code)
+        if abs(e_max - e_min) > threshold:
+            return None
+        return round((e_max + e_min) / 2, 2)

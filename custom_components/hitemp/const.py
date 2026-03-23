@@ -309,7 +309,7 @@ ALL_PARAMS: Final = list(ALL_PARAM_DEFS.keys())
 
 # Binary status parameters (O codes that are on/off)
 BINARY_STATUS_PARAMS: Final = [
-    "Power", "O01", "O02", "O03", "O04", "O05", "O06",
+    "O01", "O02", "O03", "O04", "O05", "O06",
     "O10", "O11", "O12", "O13", "O14", "O15",
 ]
 

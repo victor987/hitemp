@@ -27,7 +27,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Mapping of param codes to device classes
 PARAM_DEVICE_CLASS_MAP: dict[str, BinarySensorDeviceClass | None] = {
-    "Power": BinarySensorDeviceClass.POWER,
     "O01": BinarySensorDeviceClass.RUNNING,  # Compressor
     "O02": BinarySensorDeviceClass.RUNNING,  # Heater
     "O03": None,  # 4-way valve
@@ -61,8 +60,7 @@ async def async_setup_entry(
             if param_code in ALL_PARAM_DEFS:
                 param = ALL_PARAM_DEFS[param_code]
                 device_class = PARAM_DEVICE_CLASS_MAP.get(param_code)
-                # Power is main entity, others are diagnostic
-                entity_category = None if param_code == "Power" else EntityCategory.DIAGNOSTIC
+                entity_category = EntityCategory.DIAGNOSTIC
 
                 entities.append(
                     HiTempBinarySensor(
