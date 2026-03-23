@@ -35,7 +35,7 @@ Control your HiTemp (Indol PV300) heat pump water heater from Home Assistant.
 ### Sensors
 - 8 temperature sensors
 - Compressor/booster runtime counters
-- Compressor speed
+- Fan RPM
 - WiFi signal strength
 - EEV position and various status sensors
 
@@ -51,8 +51,12 @@ Control your HiTemp (Indol PV300) heat pump water heater from Home Assistant.
 - Fan and frequency controls
 - And 150+ more advanced parameters
 
-### Switch
-- Power on/off control
+### Switches
+- Power on/off
+- Booster (electric heater) on/off
+
+### Fan
+- Fan speed control (off, speed 1-5)
 
 ## Notes
 

@@ -185,7 +185,7 @@ PARAMS_MODE: Final = {
     "M14": ParamDef("M14", "Device time day", "day", 1, 31, True, "mode"),
     "M15": ParamDef("M15", "Device time month", "month", 1, 12, True, "mode"),
     "M16": ParamDef("M16", "Device time year", "year", 0, 99, True, "mode"),
-    "M17": ParamDef("M17", "Fan status", None, None, None, False, "mode"),
+    "M17": ParamDef("M17", "Fan speed", None, 0, 5, True, "mode"),
 }
 
 # =============================================================================
@@ -235,7 +235,7 @@ PARAMS_OPERATING: Final = {
     "O26": ParamDef("O26", "Status O26", None, None, None, False, "operating"),
     "O27": ParamDef("O27", "Status O27", None, None, None, False, "operating"),
     "O28": ParamDef("O28", "Status O28", None, None, None, False, "operating"),
-    "O29": ParamDef("O29", "Compressor speed", "Hz", None, None, False, "operating"),
+    "O29": ParamDef("O29", "Fan RPM", "RPM", None, None, False, "operating"),
 }
 
 # =============================================================================
@@ -276,7 +276,7 @@ PARAMS_TEMP: Final = {
     "T06": ParamDef("T06", "Solar temperature", "°C", None, None, False, "temp"),
     "T07": ParamDef("T07", "Discharge temperature", "°C", None, None, False, "temp"),
     "T08": ParamDef("T08", "Sensor status flags", None, None, None, False, "temp"),
-    "T09": ParamDef("T09", "Temp sensor T09", None, None, None, False, "temp"),
+    "T09": ParamDef("T09", "Temp sensor T09", "°C", None, None, False, "temp"),
     "T10": ParamDef("T10", "Display temperature", "°C", None, None, False, "temp"),
     "T11": ParamDef("T11", "Protection count", None, None, None, False, "temp"),
     "T12": ParamDef("T12", "EEPROM storage count", None, None, None, False, "temp"),
@@ -320,11 +320,11 @@ TEMP_SENSOR_PARAMS: Final = ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T
 NUMERIC_SENSOR_PARAMS: Final = [
     "O07", "O08", "O09", "O18", "O19", "O20", "O21", "O22", "O23",
     "O24", "O25", "O26", "O27", "O28", "O29", "C05",
-    "L30", "L31", "L32", "T08", "T09", "T11", "T12", "T20", "T21", "M17",
+    "L30", "L31", "L32", "T08", "T09", "T11", "T12", "T20", "T21",
 ]
 
 # Writable number parameters (settings)
 WRITABLE_NUMBER_PARAMS: Final = [
     code for code, param in ALL_PARAM_DEFS.items()
-    if param.writable and code not in ["Power", "mode_real", "Mode", "R01"]
+    if param.writable and code not in ["Power", "mode_real", "Mode", "R01", "M06", "M17"]
 ]

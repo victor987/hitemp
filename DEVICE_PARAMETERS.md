@@ -2,7 +2,7 @@
 
 **Device Code**: 0C7FEDCE00XX
 **Product ID**: 1245226668902080512
-**Last Updated**: 2024-12-13
+**Last Updated**: 2026-03-23
 
 ## Query Verification
 
@@ -12,7 +12,21 @@
 - **Letters with data**: C, D, E, F, G, H, L, M, N, O, R, T + Power/Mode/mode_real + /01, /02
 - **Letters with NO data**: A, B, I, J, K, P, Q, S, U, V, W, X, Y, Z (all return empty)
 - **Case insensitive**: Uppercase (C01) and lowercase (c01) return the same parameter
-- **Numeric aliases**: 86 parameters have numeric aliases (71 writable + 15 read-only) shown in "Alt Code" column
+- **Numeric aliases**: 95 parameters have numeric aliases (79 writable + 16 read-only) shown in "Alt Code" column
+
+## Scan Log
+
+Full parameter scans stored in `api_explore/`. All scans: Power=ON, mode_real=2 (Eco).
+
+| File | Date | E-heater | Compressor | Fan | Power (W) |
+|------|------|----------|------------|-----|-----------|
+| `query_results_fan_off.txt` | 2026-03-23 | off | off | off | 7 |
+| `query_results_fan_on_3.txt` | 2026-03-23 | off | off | on, speed 3 | <30 |
+| `query_results_fan_on_4.txt` | 2026-03-23 | off | off | on, speed 4 | <30 |
+| `query_results_fan_on_5.txt` | 2026-03-23 | off | off | on, speed 5 | <30 |
+| `query_results_eheater_on.txt` | 2026-03-23 | on | off | off | 7 |
+| `query_results_compressor_on.txt` | 2026-03-23 | off | on | off (auto) | 250-500 |
+| `query_results_compressor_eheater_on.txt` | 2026-03-23 | on | on | off (auto) | >1500 |
 
 ## Legend
 
@@ -165,14 +179,14 @@
 
 | Code | Alt Code | Value | Range | Writability | Likely Purpose | User Confirmed | Unit | Possible Values |
 |------|----------|-------|-------|-------------|----------------|----------------|------|-----------------|
-| M06 | 1014 | 0 | 1-2 | LIKELY | Unknown | | - | 1 or 2 |
+| M06 | 1014 | 0 | 1-2 | CONFIRMED | Booster (electric heater) toggle | YES | - | 1=On, 2=Off (writing 0 reverts to 1 but value is 0 when off) |
 | M07 | | 0 | 0-1 | LIKELY | Enable flag | | - | 0=Off, 1=On |
 | M12 | 1152 | 26 | 0-59 | LIKELY | Device time minute | YES | min | |
 | M13 | 1153 | 19 | 0-23 | LIKELY | Device time hour | YES | hour | |
 | M14 | 1154 | 13 | 1-31 | LIKELY | Device time day | YES | day | |
 | M15 | 1155 | 12 | 1-12 | LIKELY | Device time month | YES | month | |
 | M16 | 1156 | 25 | 0-99 | LIKELY | Device time year (20XX) | YES | year | |
-| M17 | | 0 | - | READ-ONLY | Fan status? | | - | |
+| M17 | 1016 | 0 | 0-5 | CONFIRMED | Fan speed | YES | - | 0=Off, 1-5=Speed. Compressor overrides to max but value stays |
 
 ---
 
@@ -224,7 +238,7 @@
 | O26 | | 0 | - | READ-ONLY | Status | | - | |
 | O27 | | 0 | - | READ-ONLY | Status | | - | |
 | O28 | 2066 | 6.0 | - | READ-ONLY | Unknown | YES | - | |
-| O29 | | 830 | - | READ-ONLY | Compressor speed | YES | Hz | |
+| O29 | 2067 | 0 | - | READ-ONLY | Fan RPM | YES | RPM | 0=Off, ~570@speed3, ~700@speed4, ~830@speed5 |
 
 ---
 
@@ -233,25 +247,25 @@
 | Code | Alt Code | Value | Range | Writability | Likely Purpose | User Confirmed | Unit | Possible Values |
 |------|----------|-------|-------|-------------|----------------|----------------|------|-----------------|
 | R01 | 1104 | 45.0 | 38-75 | CONFIRMED | Target | YES | °C | |
-| R02 | | 0 | 0-3 | LIKELY | Sub-mode setting | | - | 0/1/2/3 |
+| R02 | 1105 | 0 | 0-3 | LIKELY | Sub-mode setting | | - | 0/1/2/3 |
 | R03 | 1106 | 5.0 | 1-20 | LIKELY | Hysteresis of heat pump startup (bottom) | Aquatemp | °C | |
-| R04 | | 0 | 0-1 | LIKELY | Enable R05 as setpoint of booster? | Aquatemp | - | 0=Off, 1=On |
-| R05 | | 55.0 | 30-90 | LIKELY | Setpoint of booster | Aquatemp | °C | |
+| R04 | 1107 | 0 | 0-1 | LIKELY | Enable R05 as setpoint of booster? | Aquatemp | - | 0=Off, 1=On |
+| R05 | 1108 | 55.0 | 30-90 | LIKELY | Setpoint of booster | Aquatemp | °C | |
 | R06 | 1109 | 200 | 0-90 | LIKELY | Booster startup delay | Aquatemp | min | |
-| R07 | | 0 | 0-1 | LIKELY | Booster replaces heat pump? | Aquatemp | - | 0=Off, 1=On |
+| R07 | 1110 | 0 | 0-1 | LIKELY | Booster replaces heat pump? | Aquatemp | - | 0=Off, 1=On |
 | R08 | 1111 | -5.0 | -20 to 10 | LIKELY | Ambient temp to activate booster to replace HP | Aquatemp | °C | |
 | R09 | 1112 | 5.0 | 0-30 | LIKELY | Ambient temp to activate booster without delay | Aquatemp | °C | |
 | R10 | 1113 | 25.0 | 10-40 | LIKELY | Ambient temp to activate booster with delay | Aquatemp | °C | |
-| R11 | | 0 | 0-1 | LIKELY | Option flag | | - | 0=Off, 1=On |
+| R11 | 1114 | 0 | 0-1 | LIKELY | Option flag | | - | 0=Off, 1=On |
 | R12 | 1115 | -15.0 | -30 to -5 | LIKELY | Ambient temp of shutting down compressor compulsively | Aquatemp | °C | |
 | R13 | 1116 | 0 | 0-5 | LIKELY | Mode/level setting | | - | 0-5 |
 | R14 | 1117 | 45.0 | 38-78 | LIKELY | Target temp of second heating source | Aquatemp | °C | |
 | R15 | 1118 | 78.0 | 55-80 | LIKELY | Maximal ambient temp of working compressor | Aquatemp | °C | |
 | R16 | 1119 | 3 | 0-3 | LIKELY | Mode setting | | - | 0/1/2/3 |
-| R17 | | 0 | 0-1 | LIKELY | Enable top sensor to control compressor? | Aquatemp | - | 0=Off, 1=On |
+| R17 | 1120 | 0 | 0-1 | LIKELY | Enable top sensor to control compressor? | Aquatemp | - | 0=Off, 1=On |
 | R18 | 1121 | 3.0 | 1-20 | LIKELY | Hysteresis of heat pump startup (top) | Aquatemp | °C | |
 | R19 | 1122 | 65.0 | 30-90 | LIKELY | Setpoint 1 of ambient temp to stop compressor | Aquatemp | °C | |
-| R20 | | 55.0 | 30-90 | LIKELY | Setpoint 2 of ambient temp to stop compressor | Aquatemp | °C | |
+| R20 | 1123 | 55.0 | 30-90 | LIKELY | Setpoint 2 of ambient temp to stop compressor | Aquatemp | °C | |
 
 ---
 
@@ -267,8 +281,8 @@
 | T06 | 2024 | 20.0 | - | READ-ONLY | Solar | Aquatemp | °C | |
 | T07 | 2028 | 59.0 | - | READ-ONLY | Discharge | | °C | |
 | T08 | 2029 | 0000000000000000 | - | BITMASK | Sensor status flags | | - | 16-bit flags |
-| T09 | 2030 | 37 | - | READ-ONLY | | | - | |
-| T10 | | 49.0 | - | READ-ONLY | Value shown on APP/display | YES | °C | Main display temp |
+| T09 | 2030 | 37 | - | READ-ONLY | Compressor temp | | °C | 30-40, sometimes 60-70 (2026-03-19), drops when compressor starts |
+| T10 | 2025 | 49.0 | - | READ-ONLY | Value shown on APP/display | YES | °C | Main display temp |
 | T11 | | - | - | READ-ONLY | Parameter out of range protection count | Aquatemp | - | |
 | T12 | | - | - | READ-ONLY | EEPROM storage count | Aquatemp | - | |
 | T20 | | 0 | - | READ-ONLY | Status | | - | |
@@ -294,13 +308,6 @@ Numeric codes not yet identified as aliases. Codes with unique matches are docum
 | 1075 | 0 | 0-1 | LIKELY | |
 | 1077 | 1 | 0-1 | LIKELY | |
 | 1080 | 0 | 0-1 | LIKELY | |
-| 1105 | 0 | 0-3 | LIKELY | |
-| 1107 | 0 | 0-1 | LIKELY | |
-| 1108 | 55.0 | 30-90 | LIKELY | |
-| 1110 | 0 | 0-1 | LIKELY | |
-| 1114 | 0 | 0-1 | LIKELY | |
-| 1120 | 0 | 0-1 | LIKELY | |
-| 1123 | 55.0 | 30-90 | LIKELY | |
 | 1134 | 0 | 0-23 | LIKELY | |
 | 1135 | 0 | 0-59 | LIKELY | |
 | 1136 | 0 | 0-23 | LIKELY | |
@@ -314,7 +321,6 @@ Numeric codes not yet identified as aliases. Codes with unique matches are docum
 
 | Code | Value | Writability | Notes |
 |------|-------|-------------|-------|
-| 1016 | 0 | READ-ONLY | |
 | 1129 | 0000000000000000 | BITMASK | 16-bit flags |
 | 1133 | 0000000000000000 | BITMASK | 16-bit flags |
 | 1142 | 0000000000000000 | BITMASK | 16-bit flags |
@@ -324,10 +330,9 @@ Numeric codes not yet identified as aliases. Codes with unique matches are docum
 | 2012 | 569 | READ-ONLY | |
 | 2013 | 1.1 | READ-ONLY | |
 | 2014 | 570 | READ-ONLY | |
-| 2025 | 56.0 | READ-ONLY | |
 | 2026 | 0 | READ-ONLY | |
 | 2027 | 0 | READ-ONLY | |
-| 2050 | 0000000000100100 | BITMASK | 16-bit flags |
+| 2050 | 0000000000100100 | BITMASK | Operating status: bit8=compressor, bit9=e-heater, bits2+5=always set |
 | 2051 | 0000000000000001 | BITMASK | 16-bit flags |
 | 2057 | 0 | READ-ONLY | |
 | 2058 | 0 | READ-ONLY | |
@@ -386,6 +391,7 @@ When retrieving the device list via `POST /app/device/getMyAppectDeviceShareData
 4. Range "0-90" with value "200" suggests possible API inconsistency (R06)
 5. Some parameters may be model-specific
 6. **Alt Code**: Numeric aliases (1000-1999 series) that map to the same parameter as the letter code. Both codes work identically for reading/writing.
+7. **R-code sequential pattern**: R(n) = 1103+n confirmed for all 20 R-codes (R01-R20). All values match across scans.
 
 ## API Usage
 

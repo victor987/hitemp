@@ -81,6 +81,7 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         try:
             # Refresh device list periodically
             self.devices = await self._client.get_devices()
+            _LOGGER.info("HiTemp coordinator update: %d devices", len(self.devices))
 
             # Fetch parameters for each device
             data: dict[str, dict[str, Any]] = {}
@@ -99,6 +100,10 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 # Fetch all parameters
                 params = await self._client.read_params(device_code, ALL_PARAMS)
                 data[device_code]["_params"] = params
+
+                # Log key values for debugging
+                t02 = params.get("T02", {}).get("value")
+                _LOGGER.info("HiTemp %s: T02=%s", device_code, t02)
 
             # Store data first so _update_bottom_control can access it
             self.data = data

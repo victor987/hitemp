@@ -171,7 +171,8 @@ class HiTempSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
     def native_value(self) -> StateType:
         """Return the sensor value."""
         value = self.coordinator.get_device_param(self._device_code, self._param_code)
-        if value is not None:
+        # Treat empty strings as None (API returns '' for unavailable parameters)
+        if value is not None and value != '':
             try:
                 return float(value)
             except (ValueError, TypeError):
