@@ -8,8 +8,10 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
+from homeassistant.core import callback
+from homeassistant.helpers.selector import DeviceSelector, DeviceSelectorConfig
 
 from .api import HiTempApiClient, HiTempAuthError, HiTempConnectionError
 from .const import DOMAIN
@@ -24,10 +26,19 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
+CONF_POWER_DEVICE = "power_device"
+
+
 class HiTempConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for HiTemp."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow."""
+        return HiTempOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -112,4 +123,28 @@ class HiTempConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
             errors=errors,
+        )
+
+
+class HiTempOptionsFlow(OptionsFlow):
+    """Handle options for HiTemp."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current = self.config_entry.options.get(CONF_POWER_DEVICE, "")
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_POWER_DEVICE, default=current): DeviceSelector(
+                        DeviceSelectorConfig()
+                    ),
+                }
+            ),
         )

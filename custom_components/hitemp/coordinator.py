@@ -17,8 +17,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import HiTempApiClient, HiTempAuthError, HiTempConnectionError
 from .const import ALL_PARAMS, DOMAIN, MAX_TEMP, MIN_TEMP, UPDATE_INTERVAL
 
-# External sensor entity ID for COP calculation
-ENERGY_SENSOR_ENTITY_ID = "sensor.water_heater_energy"
+from .config_flow import CONF_POWER_DEVICE
 # Tank parameters for energy calculation
 TANK_VOLUME_LITERS = 300
 SPECIFIC_HEAT_KWH = 0.001163  # kWh/(kg·K)
@@ -330,15 +329,39 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         except (ValueError, TypeError):
             return None
 
-    def _get_energy_meter(self) -> float | None:
-        """Get current energy meter reading from external sensor."""
-        state = self.hass.states.get(ENERGY_SENSOR_ENTITY_ID)
+    def _find_entity_by_device_class(self, device_class: str) -> str | None:
+        """Find a sensor entity_id on the configured power device by device_class."""
+        from homeassistant.helpers import entity_registry as er
+        device_id = self.config_entry.options.get(CONF_POWER_DEVICE, "")
+        if not device_id:
+            return None
+        registry = er.async_get(self.hass)
+        for entry in er.async_entries_for_device(registry, device_id):
+            if entry.original_device_class == device_class and entry.domain == "sensor":
+                return entry.entity_id
+        return None
+
+    def _get_state_float(self, entity_id: str | None) -> float | None:
+        """Get float state value from an entity."""
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
         if state is None or state.state in ("unknown", "unavailable"):
             return None
         try:
             return float(state.state)
         except (ValueError, TypeError):
             return None
+
+    def _get_energy_meter(self) -> float | None:
+        """Get current energy meter reading from configured power device."""
+        entity_id = self._find_entity_by_device_class("energy")
+        return self._get_state_float(entity_id)
+
+    def get_power_reading(self) -> float | None:
+        """Get current power reading from configured power device."""
+        entity_id = self._find_entity_by_device_class("power")
+        return self._get_state_float(entity_id)
 
     def is_compressor_running(self, device_code: str) -> bool:
         """Check if compressor is running based on O29 (compressor speed Hz)."""

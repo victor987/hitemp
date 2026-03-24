@@ -20,6 +20,9 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.FAN,
+    Platform.TIME,
+    Platform.DATE,
+    Platform.DATETIME,
 ]
 
 

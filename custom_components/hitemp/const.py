@@ -323,8 +323,19 @@ NUMERIC_SENSOR_PARAMS: Final = [
     "L30", "L31", "L32", "T08", "T09", "T11", "T12", "T20", "T21",
 ]
 
+# Codes handled by dedicated platform entities (not number)
+_EXCLUDED_FROM_NUMBER: Final = {
+    "Power", "mode_real", "Mode", "R01", "M06", "M17",
+    # time.py: timer times, disinfection/night hours
+    "L06", "L07", "L08", "L09", "L10", "L11", "L12", "L13", "G03", "N05", "N06",
+    # date.py: timer date
+    "L02", "L03", "L04",
+    # datetime.py: device time
+    "M12", "M13", "M14", "M15", "M16",
+}
+
 # Writable number parameters (settings)
 WRITABLE_NUMBER_PARAMS: Final = [
     code for code, param in ALL_PARAM_DEFS.items()
-    if param.writable and code not in ["Power", "mode_real", "Mode", "R01", "M06", "M17"]
+    if param.writable and code not in _EXCLUDED_FROM_NUMBER
 ]

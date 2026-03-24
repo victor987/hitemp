@@ -46,7 +46,7 @@ class HiTempPowerSwitch(CoordinatorEntity[HiTempCoordinator], SwitchEntity):
     """Switch entity for HiTemp power control."""
 
     _attr_has_entity_name = True
-    _attr_translation_key = "power"
+    _attr_name = None
     _attr_device_class = SwitchDeviceClass.SWITCH
 
     def __init__(

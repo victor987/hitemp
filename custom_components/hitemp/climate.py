@@ -35,9 +35,6 @@ PARAM_MODE = "mode_real"
 PARAM_TARGET_TEMP = "R01"
 PARAM_TEMP_BOTTOM = "T02"
 PARAM_TEMP_TOP = "T03"
-PARAM_COMPRESSOR_STATUS = "O01"
-PARAM_HEATER_STATUS = "O02"
-PARAM_DEFROST_STATUS = "O14"
 
 
 async def async_setup_entry(
@@ -154,33 +151,20 @@ class HiTempClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        """Return current HVAC action."""
+        """Return current HVAC action based on power meter or fan RPM."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
 
-        # Check defrost first
-        defrost = self.coordinator.get_device_param(self._device_code, PARAM_DEFROST_STATUS)
-        if defrost:
-            try:
-                if int(defrost) == 1:
-                    return HVACAction.DEFROSTING
-            except (ValueError, TypeError):
-                pass
+        # Primary: power meter > 100W
+        power = self.coordinator.get_power_reading()
+        if power is not None:
+            return HVACAction.HEATING if power > 100 else HVACAction.IDLE
 
-        # Check compressor
-        compressor = self.coordinator.get_device_param(self._device_code, PARAM_COMPRESSOR_STATUS)
-        if compressor:
+        # Fallback: fan RPM > 0 (O29)
+        o29 = self.coordinator.get_device_param(self._device_code, "O29")
+        if o29 is not None:
             try:
-                if int(compressor) == 1:
-                    return HVACAction.HEATING
-            except (ValueError, TypeError):
-                pass
-
-        # Check electric heater
-        heater = self.coordinator.get_device_param(self._device_code, PARAM_HEATER_STATUS)
-        if heater:
-            try:
-                if int(heater) == 1:
+                if float(o29) > 0:
                     return HVACAction.HEATING
             except (ValueError, TypeError):
                 pass
@@ -337,15 +321,18 @@ class HiTempMinimumClimate(CoordinatorEntity[HiTempCoordinator], ClimateEntity):
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        """Return current HVAC action."""
+        """Return current HVAC action based on power meter or fan RPM."""
         if self.hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
 
-        # Check if device is actually heating
-        compressor = self.coordinator.get_device_param(self._device_code, PARAM_COMPRESSOR_STATUS)
-        if compressor:
+        power = self.coordinator.get_power_reading()
+        if power is not None:
+            return HVACAction.HEATING if power > 100 else HVACAction.IDLE
+
+        o29 = self.coordinator.get_device_param(self._device_code, "O29")
+        if o29 is not None:
             try:
-                if int(compressor) == 1:
+                if float(o29) > 0:
                     return HVACAction.HEATING
             except (ValueError, TypeError):
                 pass

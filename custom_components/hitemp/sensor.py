@@ -16,6 +16,7 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfEnergy,
     UnitOfFrequency,
+    UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
 )
@@ -34,6 +35,10 @@ from .const import (
 from .coordinator import HiTempCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# TODO: Disable low-value diagnostic sensors by default (entity_registry_enabled_default=False)
+# Keep enabled: O07, O08, O09, O29, T09, WiFi signal
+# Disable: O10-O28 (except O29), T08, T11, T12, T20, T21, L30-L32, C05
 
 
 async def async_setup_entry(
@@ -124,6 +129,12 @@ async def async_setup_entry(
         )
         entities.append(
             HiTempCOPSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempPowerSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempEnergySensor(coordinator, device_code)
         )
 
     async_add_entities(entities)
@@ -567,7 +578,84 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
+        energy_id = self.coordinator._find_entity_by_device_class("energy")
         return {
-            "energy_sensor": "sensor.water_heater_energy",
-            "note": "COP updates when energy meter changes (~20 min)",
+            "energy_sensor": energy_id or "(not configured)",
+            "note": "COP updates when energy meter changes",
         }
+
+
+class HiTempPowerSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Power reading from configured power meter device."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_power_meter"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.get_power_reading() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_power_reading()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        source = self.coordinator._find_entity_by_device_class("power")
+        return {"source": source or "(not configured)"}
+
+
+class HiTempEnergySensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Energy reading from configured power meter device."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Energy"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_energy_meter"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator._get_energy_meter() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator._get_energy_meter()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        source = self.coordinator._find_entity_by_device_class("energy")
+        return {"source": source or "(not configured)"}

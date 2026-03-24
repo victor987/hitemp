@@ -23,6 +23,19 @@
       "reauth_successful": "Re-authentication successful"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HiTemp Options",
+        "data": {
+          "power_device": "Power meter device"
+        },
+        "data_description": {
+          "power_device": "Device with energy and power sensors (e.g. Zigbee smart plug)"
+        }
+      }
+    }
+  },
   "entity": {
     "climate": {
       "water_heater": {
