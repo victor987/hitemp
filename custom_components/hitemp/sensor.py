@@ -28,6 +28,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ALL_PARAM_DEFS,
+    BITMASK_PARAMS,
     DOMAIN,
     NUMERIC_SENSOR_PARAMS,
     TEMP_SENSOR_PARAMS,
@@ -36,9 +37,12 @@ from .coordinator import HiTempCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: Disable low-value diagnostic sensors by default (entity_registry_enabled_default=False)
-# Keep enabled: O07, O08, O09, O29, T09, WiFi signal
-# Disable: O10-O28 (except O29), T08, T11, T12, T20, T21, L30-L32, C05
+# TODO: Investigate if power switch is redundant with climate entity on/off
+#   Test with app/physical controls: does Power=0 fully shut down the device,
+# TODO: Investigate O28 (alt 2066) — range 1-17, disabled.
+#   Values >12 returned as negative with .6 offset (13→-12.6, 14→-11.6, etc).
+#   Corrected with 25.6-v for negatives. Purpose unknown.
+#   or is it the same as climate off (standby/idle)?
 
 
 async def async_setup_entry(
@@ -92,6 +96,13 @@ async def async_setup_entry(
                     device_class = SensorDeviceClass.TEMPERATURE
                     native_unit = UnitOfTemperature.CELSIUS
 
+                enabled_default = param_code not in BITMASK_PARAMS and param_code not in {
+                    "L31", "L32", "O28", "O07", "O08", "O29", "T09",
+                }
+
+                # Integer-valued sensors: hide the .0 decimal
+                display_precision = 0 if param.unit != "°C" else None
+
                 entities.append(
                     HiTempSensor(
                         coordinator=coordinator,
@@ -102,6 +113,8 @@ async def async_setup_entry(
                         state_class=state_class,
                         native_unit=native_unit,
                         entity_category=entity_category,
+                        enabled_default=enabled_default,
+                        display_precision=display_precision,
                     )
                 )
 
@@ -155,9 +168,14 @@ class HiTempSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
         state_class: SensorStateClass | None = None,
         native_unit: str | None = None,
         entity_category: EntityCategory | None = None,
+        enabled_default: bool = True,
+        display_precision: int | None = None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self._attr_entity_registry_enabled_default = enabled_default
+        if display_precision is not None:
+            self._attr_suggested_display_precision = display_precision
         self._device_code = device_code
         self._param_code = param_code
         self._attr_name = name
@@ -195,6 +213,11 @@ class HiTempSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
         # Treat empty strings as None (API returns '' for unavailable parameters)
         if value is not None and value != '':
             try:
+                if self._param_code in BITMASK_PARAMS:
+                    return int(str(value), 2)
+                if self._param_code == "O28":
+                    v = float(value)
+                    return int(25.6 - v) if v < 0 else int(v)
                 return float(value)
             except (ValueError, TypeError):
                 return value
@@ -215,6 +238,7 @@ class HiTempWifiSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,

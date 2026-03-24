@@ -20,14 +20,15 @@ from .coordinator import HiTempCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # (key, name, hour_code, minute_code or None)
+# (key, name, hour_code, minute_code, enabled_default)
 TIME_PARAMS = [
-    ("timer_1_start", "Timer 1 start", "L06", "L07"),
-    ("timer_1_end", "Timer 1 end", "L08", "L09"),
-    ("timer_2_start", "Timer 2 start", "L10", "L11"),
-    ("timer_2_end", "Timer 2 end", "L12", "L13"),
-    ("disinfection_start", "Disinfection start time", "G03", None),
-    ("night_decrease_start", "Night decrease start", "N05", None),
-    ("night_decrease_end", "Night decrease end", "N06", None),
+    ("timer_1_start", "Timer 1 start", "L06", "L07", False),
+    ("timer_1_end", "Timer 1 end", "L08", "L09", False),
+    ("timer_2_start", "Timer 2 start", "L10", "L11", False),
+    ("timer_2_end", "Timer 2 end", "L12", "L13", False),
+    ("disinfection_start", "Disinfection start time", "G03", None, True),
+    ("night_decrease_start", "Night decrease start", "N05", None, True),
+    ("night_decrease_end", "Night decrease end", "N06", None, True),
 ]
 
 # Codes handled here, to exclude from number entities
@@ -47,9 +48,9 @@ async def async_setup_entry(
         device_code = device.get("deviceCode")
         if not device_code:
             continue
-        for key, name, hour_code, minute_code in TIME_PARAMS:
+        for key, name, hour_code, minute_code, enabled_default in TIME_PARAMS:
             entities.append(
-                HiTempTime(coordinator, device_code, key, name, hour_code, minute_code)
+                HiTempTime(coordinator, device_code, key, name, hour_code, minute_code, enabled_default)
             )
 
     async_add_entities(entities)
@@ -69,6 +70,7 @@ class HiTempTime(CoordinatorEntity[HiTempCoordinator], TimeEntity):
         name: str,
         hour_code: str,
         minute_code: str | None,
+        enabled_default: bool = True,
     ) -> None:
         super().__init__(coordinator)
         self._device_code = device_code
@@ -76,6 +78,7 @@ class HiTempTime(CoordinatorEntity[HiTempCoordinator], TimeEntity):
         self._minute_code = minute_code
         self._attr_name = name
         self._attr_unique_id = f"{device_code}_{key}"
+        self._attr_entity_registry_enabled_default = enabled_default
 
     @property
     def device_info(self) -> DeviceInfo:

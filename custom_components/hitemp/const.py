@@ -170,8 +170,8 @@ PARAMS_TIMER: Final = {
     "L28": ParamDef("L28", "Schedule flags", None, None, None, True, "timer"),
     "L29": ParamDef("L29", "Timer config", None, 0, 255, True, "timer"),
     "L30": ParamDef("L30", "Timer status", None, None, None, False, "timer"),
-    "L31": ParamDef("L31", "Timer counter L31", None, None, None, False, "timer"),
-    "L32": ParamDef("L32", "Timer counter L32", None, None, None, False, "timer"),
+    "L31": ParamDef("L31", "Status L31", None, None, None, False, "timer"),
+    "L32": ParamDef("L32", "Status L32", None, None, None, False, "timer"),
 }
 
 # =============================================================================
@@ -227,7 +227,7 @@ PARAMS_OPERATING: Final = {
     "O18": ParamDef("O18", "Status O18", None, None, None, False, "operating"),
     "O19": ParamDef("O19", "Status O19", None, None, None, False, "operating"),
     "O20": ParamDef("O20", "Status O20", None, None, None, False, "operating"),
-    "O21": ParamDef("O21", "Temp sensor O21", "°C", None, None, False, "operating"),
+    "O21": ParamDef("O21", "Status O21", None, None, None, False, "operating"),
     "O22": ParamDef("O22", "Status O22", None, None, None, False, "operating"),
     "O23": ParamDef("O23", "Status O23", None, None, None, False, "operating"),
     "O24": ParamDef("O24", "Status O24", None, None, None, False, "operating"),
@@ -276,7 +276,7 @@ PARAMS_TEMP: Final = {
     "T06": ParamDef("T06", "Solar temperature", "°C", None, None, False, "temp"),
     "T07": ParamDef("T07", "Discharge temperature", "°C", None, None, False, "temp"),
     "T08": ParamDef("T08", "Sensor status flags", None, None, None, False, "temp"),
-    "T09": ParamDef("T09", "Temp sensor T09", "°C", None, None, False, "temp"),
+    "T09": ParamDef("T09", "Compressor temperature", "°C", None, None, False, "temp"),
     "T10": ParamDef("T10", "Display temperature", "°C", None, None, False, "temp"),
     "T11": ParamDef("T11", "Protection count", None, None, None, False, "temp"),
     "T12": ParamDef("T12", "EEPROM storage count", None, None, None, False, "temp"),
@@ -308,19 +308,15 @@ ALL_PARAM_DEFS: Final = {
 ALL_PARAMS: Final = list(ALL_PARAM_DEFS.keys())
 
 # Binary status parameters (O codes that are on/off)
-BINARY_STATUS_PARAMS: Final = [
-    "O01", "O02", "O03", "O04", "O05", "O06",
-    "O10", "O11", "O12", "O13", "O14", "O15",
-]
+BINARY_STATUS_PARAMS: Final = []
 
 # Temperature sensor parameters
 TEMP_SENSOR_PARAMS: Final = ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T10"]
 
 # Numeric sensor parameters (read-only values that aren't temp or binary)
 NUMERIC_SENSOR_PARAMS: Final = [
-    "O07", "O08", "O09", "O18", "O19", "O20", "O21", "O22", "O23",
-    "O24", "O25", "O26", "O27", "O28", "O29", "C05",
-    "L30", "L31", "L32", "T08", "T09", "T11", "T12", "T20", "T21",
+    "O07", "O08", "O09", "O28", "O29",
+    "L31", "L32", "T08", "T09",
 ]
 
 # Codes handled by dedicated platform entities (not number)
@@ -339,3 +335,7 @@ WRITABLE_NUMBER_PARAMS: Final = [
     code for code, param in ALL_PARAM_DEFS.items()
     if param.writable and code not in _EXCLUDED_FROM_NUMBER
 ]
+
+# Parameters that return 16-char binary strings from the API (e.g. "0000000000000100").
+# Parse with int(value, 2) instead of float(value).
+BITMASK_PARAMS: Final = {"T08", "F03", "L28"}

@@ -416,7 +416,7 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
     def get_precise_temp_threshold(self, device_code: str) -> float:
         """Get the precise temperature threshold."""
-        return self._precise_temp_threshold.get(device_code, 2.0)
+        return self._precise_temp_threshold.get(device_code, 4.0)
 
     def set_precise_temp_threshold(self, device_code: str, value: float) -> None:
         """Set the precise temperature threshold."""
@@ -444,7 +444,7 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
     def get_energy_stored_threshold(self, device_code: str) -> float:
         """Get the energy stored threshold in kWh."""
-        return self._energy_stored_threshold.get(device_code, 1.0)
+        return self._energy_stored_threshold.get(device_code, 2.0)
 
     def set_energy_stored_threshold(self, device_code: str, value: float) -> None:
         """Set the energy stored threshold in kWh."""

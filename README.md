@@ -54,6 +54,12 @@ Home Assistant custom integration for HiTemp (Indol PV300) heat pump water heate
 
 The integration will automatically discover all water heaters associated with your account.
 
+## Options
+
+After setup, click **Configure** on the integration to set:
+
+- **Power meter device**: Select a device (e.g. Zigbee smart plug) that monitors the water heater's power consumption. Its energy and power sensors will be mirrored under the water heater device and used for COP calculation and heating detection.
+
 ## Entities
 
 ### Climate
@@ -63,18 +69,24 @@ The integration will automatically discover all water heaters associated with yo
   - Target temperature control (38-75°C)
   - Preset modes: Eco, Hybrid, Fast, Intelligent
   - On/Off control
+  - Heating state detection via power meter (>100W) or fan RPM fallback
+- **Minimum Thermostat**: Virtual thermostat that maintains a minimum tank temperature by adjusting R01
 
 ### Sensors
 
 **Temperature Sensors:**
-- Ambient temperature
-- Bottom temperature
-- Top temperature
-- Coil temperature
-- Suction temperature
-- Solar temperature
-- Discharge temperature
-- Display temperature
+- Ambient, bottom, top, coil, suction, solar, discharge, display temperatures
+
+**Computed Sensors:**
+- Precise temperature: avg(T02, T03) when within configurable threshold
+- Temperature difference (T02 - T01)
+- Superheat (T05 - T04): refrigerant state at compressor inlet
+- Condenser approach (T07 - T02): condenser heat transfer efficiency
+- Lift (T02 - T04): temperature the heat pump works against
+- Energy stored (max/min/precise): tank thermal energy based on top, bottom, or average temperature
+- COP: coefficient of performance (requires power meter device)
+- Power: mirrored from configured power meter device
+- Energy: mirrored from configured power meter device
 
 **Operating Data:**
 - Compressor runtime (hours)
@@ -86,19 +98,14 @@ The integration will automatically discover all water heaters associated with yo
 
 ### Binary Sensors
 
-- Power status
-- Compressor running
-- Electric heater running
-- Defrost mode
-- 4-way valve
-- Fan high/low speed
-- Solar pump
+- Compressor, electric heater, defrost status
+- 4-way valve, fan high/low speed, solar pump
 - WiFi connectivity
 
 ### Number Entities (Configuration)
 
-200+ writable parameters organized by category:
-- **Disinfection**: Temperature, duration, schedule, interval
+150+ writable parameters organized by category:
+- **Disinfection**: Temperature, duration, interval
 - **Defrost**: Start/end temps, duration, mode
 - **Compressor**: Cycle times, delays, frequency settings
 - **EEV**: Superheat, position settings
@@ -106,7 +113,14 @@ The integration will automatically discover all water heaters associated with yo
 - **Heater**: Power level, operation mode
 - **Solar**: Pump control, temperature thresholds
 - **Main Settings**: Target temps, hysteresis, operation modes
-- **Timers**: Schedule configuration
+- **Thresholds**: Precise temperature threshold (°C), energy stored threshold (kWh)
+
+### Time / Date / Datetime Entities
+
+- Timer 1/2 start and end times
+- Disinfection start time, night decrease start/end
+- Timer date
+- Device time
 
 ### Switches
 

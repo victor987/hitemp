@@ -31,25 +31,26 @@ Control your HiTemp (Indol PV300) heat pump water heater from Home Assistant.
 
 ### Climate
 - Water heater thermostat with preset modes: Eco, Hybrid, Fast, Intelligent
+- Minimum thermostat for maintaining minimum tank temperature
 
 ### Sensors
 - 8 temperature sensors
-- Compressor/booster runtime counters
-- Fan RPM
-- WiFi signal strength
-- EEV position and various status sensors
+- Computed: precise temperature, superheat, condenser approach, lift, temperature difference
+- Energy stored (max/min/precise), COP
+- Power and energy (mirrored from configured power meter)
+- Compressor/booster runtime counters, fan RPM, WiFi signal, EEV position
 
 ### Binary Sensors
-- Power, compressor, heater, defrost status
-- 4-way valve, fan speeds, solar pump
-- WiFi connectivity
+- Compressor, heater, defrost status
+- 4-way valve, fan speeds, solar pump, WiFi connectivity
 
 ### Number Entities
-- Disinfection settings (temperature, duration, schedule)
-- Defrost configuration
-- Compressor cycle settings
-- Fan and frequency controls
-- And 150+ more advanced parameters
+- 150+ writable configuration parameters
+- Precise temperature and energy stored thresholds
+
+### Time / Date / Datetime
+- Timer 1/2 start/end times, disinfection/night decrease times
+- Timer date, device time
 
 ### Switches
 - Power on/off
@@ -57,6 +58,10 @@ Control your HiTemp (Indol PV300) heat pump water heater from Home Assistant.
 
 ### Fan
 - Fan speed control (off, speed 1-5)
+
+## Options
+
+After setup, configure a **power meter device** (e.g. Zigbee smart plug) for COP calculation and heating detection.
 
 ## Notes
 

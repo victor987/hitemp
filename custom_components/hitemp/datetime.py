@@ -47,6 +47,7 @@ class HiTempDeviceDatetime(CoordinatorEntity[HiTempCoordinator], DateTimeEntity)
     _attr_has_entity_name = True
     _attr_name = "Device time"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
         super().__init__(coordinator)

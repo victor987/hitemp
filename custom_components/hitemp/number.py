@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ALL_PARAM_DEFS,
+    BITMASK_PARAMS,
     DOMAIN,
     WRITABLE_NUMBER_PARAMS,
 )
@@ -75,6 +76,8 @@ async def async_setup_entry(
                 min_value = param.min_value if param.min_value is not None else 0
                 max_value = param.max_value if param.max_value is not None else 65535
 
+                enabled_default = False
+
                 entities.append(
                     HiTempNumber(
                         coordinator=coordinator,
@@ -85,6 +88,7 @@ async def async_setup_entry(
                         device_class=device_class,
                         min_value=min_value,
                         max_value=max_value,
+                        enabled_default=enabled_default,
                     )
                 )
 
@@ -116,11 +120,13 @@ class HiTempNumber(CoordinatorEntity[HiTempCoordinator], NumberEntity):
         device_class: NumberDeviceClass | None = None,
         min_value: float = 0,
         max_value: float = 65535,
+        enabled_default: bool = True,
     ) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
         self._device_code = device_code
         self._param_code = param_code
+        self._attr_entity_registry_enabled_default = enabled_default
         self._attr_name = name
         self._attr_native_unit_of_measurement = native_unit
         self._attr_device_class = device_class
@@ -155,6 +161,8 @@ class HiTempNumber(CoordinatorEntity[HiTempCoordinator], NumberEntity):
         value = self.coordinator.get_device_param(self._device_code, self._param_code)
         if value is not None:
             try:
+                if self._param_code in BITMASK_PARAMS:
+                    return float(int(str(value), 2))
                 return float(value)
             except (ValueError, TypeError):
                 pass
@@ -162,9 +170,15 @@ class HiTempNumber(CoordinatorEntity[HiTempCoordinator], NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
-        await self.coordinator.async_write_param(
-            self._device_code, self._param_code, int(value)
-        )
+        if self._param_code in BITMASK_PARAMS:
+            # Convert integer back to binary string for the API
+            await self.coordinator.async_write_param(
+                self._device_code, self._param_code, format(int(value), '016b')
+            )
+        else:
+            await self.coordinator.async_write_param(
+                self._device_code, self._param_code, int(value)
+            )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -180,6 +194,7 @@ class HiTempPreciseTempThreshold(CoordinatorEntity[HiTempCoordinator], NumberEnt
     _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
     _attr_mode = NumberMode.SLIDER
     _attr_native_min_value = 1
     _attr_native_max_value = 10
@@ -224,6 +239,7 @@ class HiTempEnergyStoredThreshold(CoordinatorEntity[HiTempCoordinator], NumberEn
     _attr_name = "Energy stored threshold"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
     _attr_mode = NumberMode.SLIDER
     _attr_native_min_value = 1
     _attr_native_max_value = 10
