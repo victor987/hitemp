@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -43,6 +44,7 @@ class HiTempApiClient:
         self._password = password
         self._token: str | None = None
         self._user_id: str | None = None
+        self._login_time: float = 0.0
 
     @property
     def token(self) -> str | None:
@@ -79,6 +81,7 @@ class HiTempApiClient:
                 if not self._token:
                     raise HiTempAuthError("No token in response")
 
+                self._login_time = time.monotonic()
                 _LOGGER.debug("Login successful, user_id: %s", self._user_id)
                 return self._token
 
@@ -88,7 +91,7 @@ class HiTempApiClient:
 
     async def get_devices(self) -> list[dict[str, Any]]:
         """Get list of devices."""
-        if not self._token or not self._user_id:
+        if not self._token or not self._user_id or time.monotonic() - self._login_time > 72000:
             await self.login()
 
         headers = {

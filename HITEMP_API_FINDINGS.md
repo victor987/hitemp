@@ -49,6 +49,8 @@ https://cloud.linked-go.com:449/crmservice/api
 
 The `x-token` from the response must be included in headers for all subsequent requests.
 
+**Session lifetime**: Tokens expire after approximately 24 hours. After expiry, API calls return a non-Success `error_msg`, and a new login is required. The integration proactively re-logins every 20 hours to avoid expiry.
+
 ## Reading Device Data
 
 ### Get Device List
