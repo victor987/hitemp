@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import timedelta
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -54,10 +56,12 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         # Energy stored threshold in kWh (default 1.0)
         self._energy_stored_threshold: dict[str, float] = {}
 
-        # COP tracking - only updates when energy meter changes
-        self._cop_last_energy_meter: dict[str, float | None] = {}
-        self._cop_energy_stored_at_meter_change: dict[str, float | None] = {}
-        self._cop_current: dict[str, float | None] = {}
+        # COP tracking - rolling 4h window per (device_code, variant)
+        # Each entry: (timestamp, energy_stored, meter_reading)
+        COP_WINDOW_SECONDS = 4 * 3600
+        self._cop_window_seconds = COP_WINDOW_SECONDS
+        self._cop_window: dict[tuple[str, str], deque[tuple[float, float, float]]] = {}
+        self._cop_last_meter: dict[tuple[str, str], float | None] = {}
 
     async def _async_setup(self) -> None:
         """Set up the coordinator."""
@@ -115,7 +119,8 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             # Run active minimum control loop for each device
             for device_code in data:
                 await self._update_minimum_control(device_code)
-                self._update_cop(device_code)
+                self._update_cop(device_code, "precise")
+                self._update_cop(device_code, "bottom")
 
             return data
 
@@ -319,15 +324,16 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     # COP Calculation
     # =========================================================================
 
-    def _get_energy_stored(self, device_code: str) -> float | None:
-        """Calculate energy stored in tank: 300kg × 0.001163 × T02 kWh."""
-        t02 = self.get_device_param(device_code, "T02")
-        if t02 is None:
+    def _get_energy_stored_for_cop(self, device_code: str, variant: str) -> float | None:
+        """Get energy stored for COP calculation by variant."""
+        if variant == "precise":
+            temp = self.get_precise_temperature(device_code)
+        else:
+            t02 = self.get_device_param(device_code, "T02")
+            temp = float(t02) if t02 is not None else None
+        if temp is None:
             return None
-        try:
-            return TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * float(t02)
-        except (ValueError, TypeError):
-            return None
+        return TANK_VOLUME_LITERS * SPECIFIC_HEAT_KWH * temp
 
     def _find_entity_by_device_class(self, device_class: str) -> str | None:
         """Find a sensor entity_id on the configured power device by device_class."""
@@ -363,52 +369,46 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         entity_id = self._find_entity_by_device_class("power")
         return self._get_state_float(entity_id)
 
-    def is_compressor_running(self, device_code: str) -> bool:
-        """Check if compressor is running based on O29 (compressor speed Hz)."""
-        o29 = self.get_device_param(device_code, "O29")
-        if o29 is None:
-            return False
-        try:
-            return float(o29) > 0
-        except (ValueError, TypeError):
-            return False
+    def _update_cop(self, device_code: str, variant: str) -> None:
+        """Update COP rolling window for a variant."""
+        key = (device_code, variant)
+        current_meter = self._get_energy_meter()
+        current_stored = self._get_energy_stored_for_cop(device_code, variant)
 
-    def _update_cop(self, device_code: str) -> None:
-        """Update COP - only when energy meter changes."""
-        current_energy_meter = self._get_energy_meter()
-        current_energy_stored = self._get_energy_stored(device_code)
-
-        # Need both values
-        if current_energy_meter is None or current_energy_stored is None:
+        if current_meter is None or current_stored is None:
             return
 
-        last_energy_meter = self._cop_last_energy_meter.get(device_code)
-        energy_stored_at_start = self._cop_energy_stored_at_meter_change.get(device_code)
-
-        # Initialize if not set
-        if last_energy_meter is None or energy_stored_at_start is None:
-            self._cop_last_energy_meter[device_code] = current_energy_meter
-            self._cop_energy_stored_at_meter_change[device_code] = current_energy_stored
+        # Only record when meter changes
+        last_meter = self._cop_last_meter.get(key)
+        if last_meter is not None and current_meter == last_meter:
             return
+        self._cop_last_meter[key] = current_meter
 
-        # No change in meter - do nothing
-        if current_energy_meter == last_energy_meter:
-            return
+        # Add to window
+        now = time.monotonic()
+        if key not in self._cop_window:
+            self._cop_window[key] = deque()
+        window = self._cop_window[key]
+        window.append((now, current_stored, current_meter))
 
-        # Meter changed - calculate COP
-        delta_stored = current_energy_stored - energy_stored_at_start
-        delta_meter = current_energy_meter - last_energy_meter
+        # Drop entries older than 4h
+        cutoff = now - self._cop_window_seconds
+        while window and window[0][0] < cutoff:
+            window.popleft()
 
-        if delta_meter > 0:
-            self._cop_current[device_code] = round(delta_stored / delta_meter, 2)
-
-        # Update tracking for next meter change
-        self._cop_last_energy_meter[device_code] = current_energy_meter
-        self._cop_energy_stored_at_meter_change[device_code] = current_energy_stored
-
-    def get_cop(self, device_code: str) -> float | None:
-        """Get COP value."""
-        return self._cop_current.get(device_code)
+    def get_cop(self, device_code: str, variant: str = "precise") -> float | None:
+        """Get COP over the rolling window."""
+        key = (device_code, variant)
+        window = self._cop_window.get(key)
+        if not window or len(window) < 2:
+            return None
+        oldest = window[0]
+        newest = window[-1]
+        delta_meter = newest[2] - oldest[2]
+        if delta_meter <= 0:
+            return None
+        delta_stored = newest[1] - oldest[1]
+        return round(delta_stored / delta_meter, 2)
 
     # =========================================================================
     # Precise Temperature

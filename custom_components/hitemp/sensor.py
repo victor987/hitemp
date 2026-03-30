@@ -141,7 +141,10 @@ async def async_setup_entry(
             HiTempEnergyStoredSensor(coordinator, device_code)
         )
         entities.append(
-            HiTempCOPSensor(coordinator, device_code)
+            HiTempCOPSensor(coordinator, device_code, "precise", "COP", "_cop")
+        )
+        entities.append(
+            HiTempCOPSensor(coordinator, device_code, "bottom", "COP (bottom)", "_cop_bottom")
         )
         entities.append(
             HiTempPowerSensor(coordinator, device_code)
@@ -556,7 +559,6 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
     """COP (Coefficient of Performance) sensor."""
 
     _attr_has_entity_name = True
-    _attr_name = "COP"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = None
     _attr_icon = "mdi:heat-pump"
@@ -565,15 +567,19 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
         self,
         coordinator: HiTempCoordinator,
         device_code: str,
+        variant: str,
+        name: str,
+        unique_suffix: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._device_code = device_code
-        self._attr_unique_id = f"{device_code}_cop"
+        self._variant = variant
+        self._attr_name = name
+        self._attr_unique_id = f"{device_code}{unique_suffix}"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device information."""
         device = self.coordinator.get_device_info(self._device_code)
         return DeviceInfo(
             identifiers={(DOMAIN, self._device_code)},
@@ -584,28 +590,18 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Return if entity is available."""
-        # Always visible - availability conditions preserved for later
-        # if not self.coordinator.last_update_success:
-        #     return False
-        # device = self.coordinator.get_device_info(self._device_code)
-        # if device:
-        #     return device.get("deviceStatus") == "ONLINE"
-        # return False
-        return True
+        return self.coordinator._get_energy_meter() is not None
 
     @property
     def native_value(self) -> StateType:
-        """Return COP value."""
-        return self.coordinator.get_cop(self._device_code)
+        return self.coordinator.get_cop(self._device_code, self._variant)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
         energy_id = self.coordinator._find_entity_by_device_class("energy")
         return {
+            "variant": self._variant,
             "energy_sensor": energy_id or "(not configured)",
-            "note": "COP updates when energy meter changes",
         }
 
 
