@@ -84,7 +84,8 @@ After setup, click **Configure** on the integration to set:
 - Condenser approach (T07 - T02): condenser heat transfer efficiency
 - Lift (T02 - T04): temperature the heat pump works against
 - Energy stored (max/min/precise): tank thermal energy based on top, bottom, or average temperature
-- COP: coefficient of performance (requires power meter device)
+- COP: coefficient of performance over 4h rolling window (requires power meter device)
+- COP (bottom): same calculation using T02 only, for comparison
 - Power: mirrored from configured power meter device
 - Energy: mirrored from configured power meter device
 

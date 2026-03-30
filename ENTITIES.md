@@ -26,7 +26,8 @@ History data queried from HA recorder on 2026-03-24 with `start_time=2020-01-01`
 |---|---|---|---|---|---|---|
 | Ambient temperature | T01 | sensor | 0.5°C | `_T01` | 16929 changes | |
 | Bottom temperature | T02 | sensor | 0.5°C | `_T02` | 44893 changes | |
-| COP | — | sensor | 0.01 | `_cop` | 39975 changes | |
+| COP | — | sensor | 0.01 | `_cop` | 39975 changes (pre-v1.8.0: per-interval) | |
+| COP (bottom) | — | sensor | 0.01 | `_cop_bottom` | new in v1.8.0 | |
 | Coil temperature | T04 | sensor | 0.5°C | `_T04` | 30718 changes | |
 | Condenser approach | T07, T02 | sensor | 0.5°C (round 0.1) | `_condenser_approach` | 1147 changes | |
 | Discharge temperature | T07 | sensor | 0.5°C | `_T07` | 39323 changes | |

@@ -36,7 +36,7 @@ Control your HiTemp (Indol PV300) heat pump water heater from Home Assistant.
 ### Sensors
 - 8 temperature sensors
 - Computed: precise temperature, superheat, condenser approach, lift, temperature difference
-- Energy stored (max/min/precise), COP
+- Energy stored (max/min/precise), COP (4h rolling window, precise + bottom variants)
 - Power and energy (mirrored from configured power meter)
 - Compressor/booster runtime counters, fan RPM, WiFi signal, EEV position
 
