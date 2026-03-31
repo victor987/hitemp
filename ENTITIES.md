@@ -12,11 +12,11 @@ History data queried from HA recorder on 2026-03-24 with `start_time=2020-01-01`
 
 | Platform | Name | Code(s) | Precision | Notes | History | Status |
 |---|---|---|---|---|---|---|
-| switch | Booster | M06 | on/off | On=1 / Off=2 | constant: off (3 entries since 2026-03-23) | |
-| fan | Fan | M17 | 5 speeds | Speed 0 (off) – 5 | constant: off (3 entries since 2026-03-23) | |
+| switch | Booster | M06 | on/off | On=1 / Off=2 | 3 entries since 2026-03-23 | |
+| fan | Fan | M17 | 5 speeds | Speed 0 (off) – 5 | 3 entries since 2026-03-23 | |
 | climate | Minimum Thermostat | R01, T02, T03 | target 1°C, current 0.5°C | Virtual — keeps min(T02, T03) at target via R01 formula | constant: off (64303 entries since 2026-01-10, attr updates only) | |
 | climate | (device name) | Power, mode_real, R01, T02, T03 | target 1°C, current 0.25°C | Main thermostat — avg(T02, T03), presets Eco/Hybrid/Fast/Intelligent | always heat (62621 entries, attr updates) | |
-| switch | (device name) | Power | on/off | On/off | constant: on (39 entries since 2026-01-10) | disabled |
+| switch | (device name) | Power | on/off | Redundant with climate on/off | constant: on (39 entries since 2026-01-10) | removed |
 
 ---
 

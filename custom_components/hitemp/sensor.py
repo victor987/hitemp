@@ -37,11 +37,10 @@ from .coordinator import HiTempCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO: Investigate if power switch is redundant with climate entity on/off
-#   Test with app/physical controls: does Power=0 fully shut down the device,
-# TODO: Investigate O28 (alt 2066) — range 1-17, disabled.
+# TODO: Investigate O28 (alt 2066) — range 0-17, disabled.
 #   Values >12 returned as negative with .6 offset (13→-12.6, 14→-11.6, etc).
-#   Corrected with 25.6-v for negatives. Purpose unknown.
+#   Corrected with 25.6+v for negatives. Idle=6, rises during compressor operation,
+#   drops as tank temp increases. Possibly EEV superheat or subcooling.
 #   or is it the same as climate off (standby/idle)?
 
 
@@ -220,7 +219,7 @@ class HiTempSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
                     return int(str(value), 2)
                 if self._param_code == "O28":
                     v = float(value)
-                    return int(25.6 - v) if v < 0 else int(v)
+                    return int(25.6 + v) if v < 0 else int(v)
                 return float(value)
             except (ValueError, TypeError):
                 return value

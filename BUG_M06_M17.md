@@ -153,6 +153,10 @@ Check any temperature sensor (e.g. `sensor.water_heater_bottom_temperature`). If
 - `fan.py`: New `HiTempFan` for M17 (writes 0-5)
 - `__init__.py`: Added `Platform.FAN`
 
+## Resolution (2026-03-31)
+
+Issue resolved after v1.7.0 deployment. M06 and M17 now update correctly — changes made in the app are reflected in HA. Root cause was not definitively identified; likely resolved by one of the code changes in v1.5.0–v1.7.0 (entity restructuring, bitmask parsing, or coordinator updates).
+
 After deploying these changes, the old `number.water_heater_mode_setting_m06` and `sensor.water_heater_fan_status` entities will become orphaned. They should be manually deleted from the entity registry.
 
 ## Key files

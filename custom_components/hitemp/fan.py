@@ -45,7 +45,11 @@ class HiTempFan(CoordinatorEntity[HiTempCoordinator], FanEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Fan"
-    _attr_supported_features = FanEntityFeature.SET_SPEED
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF
+    )
     _attr_speed_count = 5
 
     def __init__(
