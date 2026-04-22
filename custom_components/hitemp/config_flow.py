@@ -11,7 +11,12 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import callback
-from homeassistant.helpers.selector import DeviceSelector, DeviceSelectorConfig
+from homeassistant.helpers.selector import (
+    DeviceSelector,
+    DeviceSelectorConfig,
+    EntitySelector,
+    EntitySelectorConfig,
+)
 
 from .api import HiTempApiClient, HiTempAuthError, HiTempConnectionError
 from .const import DOMAIN
@@ -27,6 +32,10 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 CONF_POWER_DEVICE = "power_device"
+CONF_INLET_TEMP = "inlet_temp_entity"
+CONF_WATER_VOLUME = "water_volume_entity"
+CONF_WATER_ENERGY = "water_energy_entity"
+CONF_WATER_FLOW = "water_flow_entity"
 
 
 class HiTempConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -136,15 +145,33 @@ class HiTempOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        current = self.config_entry.options.get(CONF_POWER_DEVICE, "")
+        opts = self.config_entry.options
+        sensor_selector = EntitySelector(EntitySelectorConfig(domain="sensor"))
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_POWER_DEVICE, default=current): DeviceSelector(
-                        DeviceSelectorConfig()
-                    ),
+                    vol.Optional(
+                        CONF_POWER_DEVICE,
+                        default=opts.get(CONF_POWER_DEVICE, ""),
+                    ): DeviceSelector(DeviceSelectorConfig()),
+                    vol.Optional(
+                        CONF_INLET_TEMP,
+                        default=opts.get(CONF_INLET_TEMP, ""),
+                    ): sensor_selector,
+                    vol.Optional(
+                        CONF_WATER_VOLUME,
+                        default=opts.get(CONF_WATER_VOLUME, ""),
+                    ): sensor_selector,
+                    vol.Optional(
+                        CONF_WATER_ENERGY,
+                        default=opts.get(CONF_WATER_ENERGY, ""),
+                    ): sensor_selector,
+                    vol.Optional(
+                        CONF_WATER_FLOW,
+                        default=opts.get(CONF_WATER_FLOW, ""),
+                    ): sensor_selector,
                 }
             ),
         )

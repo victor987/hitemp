@@ -11,7 +11,13 @@ from homeassistant.components.number import (
     NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfTemperature, UnitOfTime
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfEnergy,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolumeFlowRate,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -97,6 +103,9 @@ async def async_setup_entry(
         )
         entities.append(
             HiTempEnergyStoredThreshold(coordinator, device_code)
+        )
+        entities.append(
+            HiTempFlowThreshold(coordinator, device_code)
         )
 
     async_add_entities(entities)
@@ -274,4 +283,44 @@ class HiTempEnergyStoredThreshold(CoordinatorEntity[HiTempCoordinator], NumberEn
     async def async_set_native_value(self, value: float) -> None:
         """Set new threshold."""
         self.coordinator.set_energy_stored_threshold(self._device_code, int(value))
+        self.async_write_ha_state()
+
+
+class HiTempFlowThreshold(CoordinatorEntity[HiTempCoordinator], NumberEntity):
+    """Threshold for flow rate to detect hot water draws (cycle COP)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Flow threshold"
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_min_value = 1
+    _attr_native_max_value = 10
+    _attr_native_step = 1
+
+    def __init__(
+        self,
+        coordinator: HiTempCoordinator,
+        device_code: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}_flow_threshold"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+    @property
+    def native_value(self) -> int:
+        return int(self.coordinator.get_flow_threshold(self._device_code))
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.coordinator.set_flow_threshold(self._device_code, int(value))
         self.async_write_ha_state()

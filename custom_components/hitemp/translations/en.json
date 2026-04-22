@@ -28,10 +28,18 @@
       "init": {
         "title": "HiTemp Options",
         "data": {
-          "power_device": "Power meter device"
+          "power_device": "Power meter device",
+          "inlet_temp_entity": "Cold inlet temperature sensor",
+          "water_volume_entity": "Cumulative water volume sensor",
+          "water_energy_entity": "Water thermal energy sensor",
+          "water_flow_entity": "Water flow rate sensor"
         },
         "data_description": {
-          "power_device": "Device with energy and power sensors (e.g. Zigbee smart plug)"
+          "power_device": "Device with energy and power sensors (e.g. Zigbee smart plug)",
+          "inlet_temp_entity": "Temperature of cold water entering the tank",
+          "water_volume_entity": "Cumulative water volume that has entered the tank",
+          "water_energy_entity": "Cumulative thermal energy of inlet water (relative to 0°C)",
+          "water_flow_entity": "Instantaneous water flow rate, used to detect hot water draws"
         }
       }
     }

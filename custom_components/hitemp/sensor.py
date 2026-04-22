@@ -19,6 +19,8 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
+    UnitOfVolume,
+    UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -146,10 +148,31 @@ async def async_setup_entry(
             HiTempCOPSensor(coordinator, device_code, "bottom", "COP (bottom)", "_cop_bottom")
         )
         entities.append(
+            HiTempCOPSensor(coordinator, device_code, "net", "COP (net)", "_cop_net")
+        )
+        entities.append(
+            HiTempCOPSensor(coordinator, device_code, "cycle", "COP (cycle)", "_cop_cycle")
+        )
+        entities.append(
             HiTempPowerSensor(coordinator, device_code)
         )
         entities.append(
             HiTempEnergySensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempInletTempSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempWaterVolumeSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempWaterEnergySensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempWaterFlowSensor(coordinator, device_code)
+        )
+        entities.append(
+            HiTempEnergyLossSensor(coordinator, device_code)
         )
 
     async_add_entities(entities)
@@ -589,7 +612,13 @@ class HiTempCOPSensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator._get_energy_meter() is not None
+        if self.coordinator._get_energy_meter() is None:
+            return False
+        if self._variant == "net" and self.coordinator.get_water_volume() is None:
+            return False
+        if self._variant == "cycle" and self.coordinator.get_water_flow_rate() is None:
+            return False
+        return True
 
     @property
     def native_value(self) -> StateType:
@@ -678,3 +707,135 @@ class HiTempEnergySensor(CoordinatorEntity[HiTempCoordinator], SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         source = self.coordinator._find_entity_by_device_class("energy")
         return {"source": source or "(not configured)"}
+
+
+class _WaterMeterMirrorBase(CoordinatorEntity[HiTempCoordinator], SensorEntity):
+    """Base class for water meter mirror sensors."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: HiTempCoordinator,
+        device_code: str,
+        unique_suffix: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_code = device_code
+        self._attr_unique_id = f"{device_code}{unique_suffix}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.get_device_info(self._device_code)
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_code)},
+            name=device.get("deviceNickName", "HiTemp Water Heater") if device else "HiTemp Water Heater",
+            manufacturer="HiTemp",
+            model="PV300",
+        )
+
+
+class HiTempInletTempSensor(_WaterMeterMirrorBase):
+    """Cold water inlet temperature from configured entity."""
+
+    _attr_name = "Inlet temperature"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator, device_code, "_inlet_temp")
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.get_inlet_temperature() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_inlet_temperature()
+
+
+class HiTempWaterVolumeSensor(_WaterMeterMirrorBase):
+    """Cumulative water volume from configured entity."""
+
+    _attr_name = "Water volume"
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfVolume.LITERS
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator, device_code, "_water_volume")
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.get_water_volume() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_water_volume()
+
+
+class HiTempWaterEnergySensor(_WaterMeterMirrorBase):
+    """Cumulative water thermal energy from configured entity."""
+
+    _attr_name = "Water energy"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator, device_code, "_water_energy")
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.get_water_energy() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_water_energy()
+
+
+class HiTempWaterFlowSensor(_WaterMeterMirrorBase):
+    """Water flow rate from configured entity."""
+
+    _attr_name = "Water flow rate"
+    _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator, device_code, "_water_flow")
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.get_water_flow_rate() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_water_flow_rate()
+
+
+class HiTempEnergyLossSensor(_WaterMeterMirrorBase):
+    """Cumulative energy lost through hot water draws."""
+
+    _attr_name = "Energy loss"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(self, coordinator: HiTempCoordinator, device_code: str) -> None:
+        super().__init__(coordinator, device_code, "_energy_loss")
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.get_energy_loss() is not None
+
+    @property
+    def native_value(self) -> StateType:
+        return self.coordinator.get_energy_loss()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "formula": "sum(delta_volume × 0.001163 × (T03 - inlet_temp))",
+        }

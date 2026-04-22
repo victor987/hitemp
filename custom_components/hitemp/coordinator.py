@@ -19,7 +19,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import HiTempApiClient, HiTempAuthError, HiTempConnectionError
 from .const import ALL_PARAMS, DOMAIN, MAX_TEMP, MIN_TEMP, UPDATE_INTERVAL
 
-from .config_flow import CONF_POWER_DEVICE
+from .config_flow import (
+    CONF_INLET_TEMP,
+    CONF_POWER_DEVICE,
+    CONF_WATER_ENERGY,
+    CONF_WATER_FLOW,
+    CONF_WATER_VOLUME,
+)
 # Tank parameters for energy calculation
 TANK_VOLUME_LITERS = 300
 SPECIFIC_HEAT_KWH = 0.001163  # kWh/(kg·K)
@@ -57,11 +63,23 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._energy_stored_threshold: dict[str, float] = {}
 
         # COP tracking - rolling 4h window per (device_code, variant)
-        # Each entry: (timestamp, energy_stored, meter_reading)
+        # Each entry: (timestamp, numerator_kwh, meter_reading)
+        # Numerator is energy_stored for precise/bottom, energy_loss for net
         COP_WINDOW_SECONDS = 4 * 3600
         self._cop_window_seconds = COP_WINDOW_SECONDS
         self._cop_window: dict[tuple[str, str], deque[tuple[float, float, float]]] = {}
         self._cop_last_meter: dict[tuple[str, str], float | None] = {}
+
+        # Water draw energy loss tracking (resets on HA restart)
+        self._energy_loss_total: float = 0.0
+        self._last_water_volume: float | None = None
+
+        # COP cycle variant: since last draw ended
+        self._flow_threshold: dict[str, float] = {}
+        self._flow_was_above: bool = False
+        self._cycle_mark_loss: float | None = None
+        self._cycle_mark_meter: float | None = None
+        self._cycle_cop: dict[str, float | None] = {}
 
     async def _async_setup(self) -> None:
         """Set up the coordinator."""
@@ -119,8 +137,11 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             # Run active minimum control loop for each device
             for device_code in data:
                 await self._update_minimum_control(device_code)
+                self._update_energy_loss(device_code)
                 self._update_cop(device_code, "precise")
                 self._update_cop(device_code, "bottom")
+                self._update_cop(device_code, "net")
+                self._update_cop_cycle(device_code)
 
             return data
 
@@ -324,8 +345,17 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     # COP Calculation
     # =========================================================================
 
-    def _get_energy_stored_for_cop(self, device_code: str, variant: str) -> float | None:
-        """Get energy stored for COP calculation by variant."""
+    def _get_cop_numerator(self, device_code: str, variant: str) -> float | None:
+        """Get numerator value for COP rolling window by variant.
+
+        For "precise"/"bottom": cumulative energy stored in tank.
+        For "net": cumulative energy loss through hot water draws.
+        """
+        if variant == "net":
+            # Only record if water meter is configured
+            if not self.config_entry.options.get(CONF_WATER_VOLUME, ""):
+                return None
+            return self._energy_loss_total
         if variant == "precise":
             temp = self.get_precise_temperature(device_code)
         else:
@@ -369,13 +399,150 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         entity_id = self._find_entity_by_device_class("power")
         return self._get_state_float(entity_id)
 
+    # -------- Water meter --------
+
+    def get_inlet_temperature(self) -> float | None:
+        """Get inlet water temperature from configured entity."""
+        entity_id = self.config_entry.options.get(CONF_INLET_TEMP, "")
+        return self._get_state_float(entity_id) if entity_id else None
+
+    def get_water_volume(self) -> float | None:
+        """Get cumulative water volume from configured entity (raw value, not converted)."""
+        entity_id = self.config_entry.options.get(CONF_WATER_VOLUME, "")
+        return self._get_state_float(entity_id) if entity_id else None
+
+    def _get_water_volume_liters(self) -> float | None:
+        """Get cumulative water volume in liters, converting from m³ if needed."""
+        entity_id = self.config_entry.options.get(CONF_WATER_VOLUME, "")
+        if not entity_id:
+            return None
+        value = self._get_state_float(entity_id)
+        if value is None:
+            return None
+        state = self.hass.states.get(entity_id)
+        unit = state.attributes.get("unit_of_measurement") if state else None
+        if unit in ("m³", "m3"):
+            value *= 1000
+        return value
+
+    def get_water_energy(self) -> float | None:
+        """Get cumulative water thermal energy from configured entity."""
+        entity_id = self.config_entry.options.get(CONF_WATER_ENERGY, "")
+        return self._get_state_float(entity_id) if entity_id else None
+
+    def get_water_flow_rate(self) -> float | None:
+        """Get current water flow rate from configured entity."""
+        entity_id = self.config_entry.options.get(CONF_WATER_FLOW, "")
+        return self._get_state_float(entity_id) if entity_id else None
+
+    def get_energy_loss(self) -> float | None:
+        """Get accumulated energy loss from water draws (kWh)."""
+        if not self.config_entry.options.get(CONF_WATER_VOLUME, ""):
+            return None
+        return round(self._energy_loss_total, 4)
+
+    def _update_energy_loss(self, device_code: str) -> None:
+        """Track energy lost through hot water draws.
+
+        energy_lost = delta_volume_L × 0.001163 × (T03 − inlet_temp)
+        """
+        current_volume = self._get_water_volume_liters()
+        if current_volume is None:
+            return
+
+        last_volume = self._last_water_volume
+        self._last_water_volume = current_volume
+
+        if last_volume is None:
+            return  # First reading — just record, no delta yet
+
+        delta_volume = current_volume - last_volume
+        if delta_volume <= 0:
+            return
+
+        t03 = self.get_device_param(device_code, "T03")
+        if t03 is None:
+            return
+        try:
+            top_temp = float(t03)
+        except (ValueError, TypeError):
+            return
+
+        inlet_temp = self.get_inlet_temperature()
+        if inlet_temp is None:
+            return
+
+        energy_lost = delta_volume * SPECIFIC_HEAT_KWH * (top_temp - inlet_temp)
+        if energy_lost > 0:
+            self._energy_loss_total += energy_lost
+            _LOGGER.debug(
+                "Water draw: %.1fL, T03=%.1f, inlet=%.1f, loss=%.4f kWh (total=%.4f)",
+                delta_volume, top_temp, inlet_temp, energy_lost, self._energy_loss_total,
+            )
+
+    # -------- Flow threshold (for cycle COP) --------
+
+    def get_flow_threshold(self, device_code: str) -> float:
+        """Get the flow rate threshold for draw detection (L/min)."""
+        return self._flow_threshold.get(device_code, 1.0)
+
+    def set_flow_threshold(self, device_code: str, value: float) -> None:
+        """Set the flow rate threshold."""
+        self._flow_threshold[device_code] = value
+
+    def _update_cop_cycle(self, device_code: str) -> None:
+        """Update COP since last draw ended.
+
+        - When flow > threshold: mark that a draw is in progress.
+        - When flow drops back to <= threshold after being above: record mark.
+        - While mark is set: COP = (loss - mark_loss) / (meter - mark_meter)
+        """
+        # Require water meter and power meter configured
+        if not self.config_entry.options.get(CONF_WATER_FLOW, ""):
+            return
+
+        flow = self.get_water_flow_rate()
+        if flow is None:
+            return
+
+        threshold = self.get_flow_threshold(device_code)
+        current_meter = self._get_energy_meter()
+
+        if flow > threshold:
+            self._flow_was_above = True
+        elif self._flow_was_above:
+            # Flow just dropped below threshold — draw ended, mark reference
+            self._flow_was_above = False
+            self._cycle_mark_loss = self._energy_loss_total
+            self._cycle_mark_meter = current_meter
+            _LOGGER.debug(
+                "Draw ended, marking cycle COP reference: loss=%.4f, meter=%s",
+                self._energy_loss_total, current_meter,
+            )
+
+        # Compute cycle COP if mark is set
+        if (
+            self._cycle_mark_loss is None
+            or self._cycle_mark_meter is None
+            or current_meter is None
+        ):
+            self._cycle_cop[device_code] = None
+            return
+
+        delta_loss = self._energy_loss_total - self._cycle_mark_loss
+        delta_meter = current_meter - self._cycle_mark_meter
+        if delta_meter <= 0:
+            self._cycle_cop[device_code] = None
+            return
+        self._cycle_cop[device_code] = round(delta_loss / delta_meter, 2)
+
     def _update_cop(self, device_code: str, variant: str) -> None:
         """Update COP rolling window for a variant."""
         key = (device_code, variant)
         current_meter = self._get_energy_meter()
-        current_stored = self._get_energy_stored_for_cop(device_code, variant)
+        current_num = self._get_cop_numerator(device_code, variant)
 
-        if current_meter is None or current_stored is None:
+        if current_meter is None or current_num is None:
             return
 
         # Only record when meter changes
@@ -389,7 +556,7 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         if key not in self._cop_window:
             self._cop_window[key] = deque()
         window = self._cop_window[key]
-        window.append((now, current_stored, current_meter))
+        window.append((now, current_num, current_meter))
 
         # Drop entries older than 4h
         cutoff = now - self._cop_window_seconds
@@ -397,7 +564,9 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             window.popleft()
 
     def get_cop(self, device_code: str, variant: str = "precise") -> float | None:
-        """Get COP over the rolling window."""
+        """Get COP over the rolling window (or cycle COP for "cycle" variant)."""
+        if variant == "cycle":
+            return self._cycle_cop.get(device_code)
         key = (device_code, variant)
         window = self._cop_window.get(key)
         if not window or len(window) < 2:
@@ -407,8 +576,8 @@ class HiTempCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         delta_meter = newest[2] - oldest[2]
         if delta_meter <= 0:
             return None
-        delta_stored = newest[1] - oldest[1]
-        return round(delta_stored / delta_meter, 2)
+        delta_num = newest[1] - oldest[1]
+        return round(delta_num / delta_meter, 2)
 
     # =========================================================================
     # Precise Temperature
